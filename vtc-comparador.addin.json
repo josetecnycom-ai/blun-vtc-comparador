@@ -1,0 +1,19 @@
+{
+  "name": "Comparador de Viajes VTC",
+  "supportEmail": "soporte@eurosuministros.com",
+  "version": "1.0.2",
+  "isSigned": false,
+  "key": "blunvtccomparador",
+  "items": [
+    {
+      "url": "https://TU-SERVIDOR.com/vtc-comparador.html",
+      "path": "ActivityLink",
+      "menuName": {
+        "en": "VTC Trip Comparator",
+        "es": "Comparador Viajes VTC"
+      },
+      "svgIcon": "https://TU-SERVIDOR.com/vtc-icon.svg"
+    }
+  ],
+  "files": {}
+}
