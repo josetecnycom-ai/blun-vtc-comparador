@@ -87,7 +87,7 @@ let csvPlates = new Set();
 let sortCol = 'unmatched';
 let sortDir = -1;
 
-// ── INIT GEOTAB ──────────────────────────────────────────
+// ── INIT GEOTAB (CORREGIDO CON TU KEY: blunvtccomparador) ──
 if (typeof geotab === 'undefined') {
   window.geotab = { addin: {} };
   document.addEventListener('DOMContentLoaded', () => {
@@ -96,7 +96,8 @@ if (typeof geotab === 'undefined') {
   });
 }
 
-geotab.addin.comparadorDeViajesVTC = function () {
+// Aquí es donde se mapea directamente con la "key" de tu JSON
+geotab.addin.blunvtccomparador = function () {
   return {
     initialize: function (geotabApi, state, callback) {
       api = geotabApi; 
@@ -289,13 +290,10 @@ async function runComparison() {
         geotabDriverName = userMap[t.driver.id] || t.driver.id;
       }
 
-      // MATCH LOGIC: Soporta viajes divididos si los fragmentos de Geotab están contenidos dentro del bloque de la APP + Tolerancia
       const match = csvTrips.find(c => {
         if (c.plate !== plate) return false;
-        
         const isAfterStart = gStart >= new Date(c.reqTime.getTime() - tolMs);
         const isBeforeEnd = gStop <= new Date(c.arrTime.getTime() + tolMs);
-        
         return isAfterStart && isBeforeEnd;
       });
 
@@ -499,7 +497,6 @@ function resortBy(col) {
   );
 }
 
-// Enlace Dinámico Absoluto para abrir en nueva pestaña (UI y Excel)
 function buildMapUrl(t) {
   const from = t.gStart.toISOString();
   const to   = t.gStop.toISOString();
