@@ -87,7 +87,7 @@ let csvPlates = new Set();
 let sortCol = 'unmatched';
 let sortDir = -1;
 
-// ── INIT GEOTAB (CORREGIDO CON TU KEY: blunvtccomparador) ──
+// ── INIT GEOTAB ──────────────────────────────────────────
 if (typeof geotab === 'undefined') {
   window.geotab = { addin: {} };
   document.addEventListener('DOMContentLoaded', () => {
@@ -96,7 +96,6 @@ if (typeof geotab === 'undefined') {
   });
 }
 
-// Aquí es donde se mapea directamente con la "key" de tu JSON
 geotab.addin.blunvtccomparador = function () {
   return {
     initialize: function (geotabApi, state, callback) {
@@ -143,7 +142,6 @@ function handleFile(file) {
   reader.readAsText(file, 'utf-8');
 }
 
-// ── PARSEAR CSV VTC ──────────────────────────────────────
 function parseCSV(text, fname) {
   text = text.replace(/^\uFEFF/, '');
   const lines = text.split(/\r?\n/).filter(l => l.trim());
@@ -172,11 +170,7 @@ function parseCSV(text, fname) {
       plateRaw,
       reqTime: parseDate(reqStr),
       arrTime: parseDate(arrStr),
-      origin:  cols[idx['Dirección de recogida']]||'',
-      dest:    cols[idx['Dirección de destino']]||'',
-      dist:    parseFloat((cols[idx['Distancia del viaje']]||'0').replace(',','.')),
-      product: cols[idx['Tipo de producto']]||'',
-      payment: cols[idx['Tipo de pago']]||'',
+      dist: parseFloat((cols[idx['Distancia del viaje']]||'0').replace(',','.'))
     });
   }
 
@@ -197,7 +191,6 @@ function parseCSV(text, fname) {
   document.getElementById('btnRun').disabled = false;
 }
 
-// ── PARSEAR FECHA DD/MM/YYYY HH:MM ───────────────────────
 function parseDate(s) {
   if (!s) return null;
   const m = s.match(/(\d{1,2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
@@ -205,7 +198,6 @@ function parseDate(s) {
   return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
 }
 
-// ── LLAMADA API GEOTAB ───────────────────────────────────
 function callApi(method, params) {
   return new Promise((res, rej) => api.call(method, params, res, rej));
 }
@@ -229,10 +221,8 @@ async function runComparison() {
       userMap[u.id] = (u.firstName && u.lastName) ? (u.firstName + ' ' + u.lastName) : (u.name || 'Desconocido');
     });
 
-    const deviceMap = {}; 
     const plateToDevice = {}; 
     devices.forEach(d => {
-      deviceMap[d.id] = d;
       const np = normPlate(d.name);
       if (np) plateToDevice[np] = d;
     });
@@ -270,13 +260,9 @@ async function runComparison() {
       }
     }
 
-    updateLoading('Cruzando datos y asignando conductores...');
+    updateLoading('Calculando relaciones 1 a N (Geotab -> APP)...');
 
-    const geotabFiltered = allTrips.filter(t => {
-      const dist = (t.distance || 0) / 1000; 
-      return dist >= minDist;
-    });
-
+    const geotabFiltered = allTrips.filter(t => (t.distance || 0) / 1000 >= minDist);
     const tolMs = tolerance * 60 * 1000;
     
     const enriched = geotabFiltered.map(t => {
@@ -291,23 +277,17 @@ async function runComparison() {
         geotabDriverName = userMap[t.driver.id] || t.driver.id;
       }
 
-      // ── NUEVA LÓGICA DE INTERSECCIÓN TEMPORAL (OVERLAP) ──
-      const match = csvTrips.find(c => {
+      // ── NUEVO: RELACIÓN 1 a N ──
+      // Buscamos TODOS los viajes del CSV que caigan dentro de este viaje continuo de Geotab
+      const matchedCSVTrips = csvTrips.filter(c => {
         if (c.plate !== plate) return false;
-
-        // Calculamos los puntos límite del solapamiento
-        const maxStart = Math.max(gStart.getTime(), c.reqTime.getTime());
-        const minEnd = Math.min(gStop.getTime(), c.arrTime.getTime());
-        
-        // Si el final más temprano ocurre después del inicio más tardío, hay coincidencia/solape en el tiempo
-        if (minEnd > maxStart) {
-          return true;
-        }
-
-        // Holgura secundaria: si no se tocan pero el inicio de Geotab está muy cerca del pedido en la APP
-        const diffStart = Math.abs(gStart.getTime() - c.reqTime.getTime());
-        return diffStart <= tolMs;
+        const maxStart = Math.max(gStart.getTime() - tolMs, c.reqTime.getTime());
+        const minEnd = Math.min(gStop.getTime() + tolMs, c.arrTime.getTime());
+        return minEnd > maxStart;
       });
+
+      const csvCount = matchedCSVTrips.length;
+      const csvTotalDist = matchedCSVTrips.reduce((sum, c) => sum + (c.dist || 0), 0);
 
       return {
         gId: t.id, gStart, gStop,
@@ -316,9 +296,10 @@ async function runComparison() {
         plate, plateOrig: dev.name,
         deviceId: dev.id, deviceName: dev.name,
         geotabDriverName,
-        matched: !!match,
-        csvUUID: match?.uuid || null,
-        csvConductor: match?.conductor || null,
+        matched: csvCount > 0, // Se considera "registrado" si tiene al menos 1 viaje APP dentro
+        csvCount: csvCount,
+        csvTotalDist: +csvTotalDist.toFixed(2),
+        discrepancyDist: +(gDist - csvTotalDist).toFixed(2) // Diferencia de KMs
       };
     });
 
@@ -448,19 +429,21 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
     if (detailTrips.length === 0) {
       html.push(`<div class="trips-sub"><p style="font-size:12px;color:var(--ok);">✓ Todos los trips están registrados en la APP.</p></div>`);
     } else {
-      html.push(`<div class="trips-sub">`);
-      html.push(`<div class="trip-list">`);
+      html.push(`<div class="trips-sub"><div class="trip-list">`);
       detailTrips.forEach(t => {
         const mapUrl = buildMapUrl(t);
         const matchBadge = t.matched 
-          ? `<span class="pill pill-ok">En APP</span>` 
-          : `<span class="pill pill-danger">Sin registrar</span>`;
+          ? `<span class="pill pill-ok">Contiene ${t.csvCount} viaje(s) APP</span>` 
+          : `<span class="pill pill-danger">Sin registrar (Completamente vacío)</span>`;
 
         html.push(`
         <div class="trip-item">
           <span class="trip-date">${fmtDateShort(t.gStart)}</span>
           <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
-          <span class="trip-dist">${t.gDist} km</span>
+          <span class="trip-dist">
+             <strong>${t.gDist} km</strong> (Geotab)
+             ${t.matched ? `<br><small style="color:var(--ink-light)">${t.csvTotalDist} km (APP)</small>` : ''}
+          </span>
           <span class="trip-route" title="Conductor: ${t.geotabDriverName}">
             <strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small>
           </span>
@@ -480,7 +463,6 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
   document.getElementById('btnExport').style.display = 'inline-flex';
 }
 
-// ── UTILIDADES Y EVENTOS ─────────────────────────────────
 function toggleExpand(id) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -518,17 +500,17 @@ function buildMapUrl(t) {
 function exportExcel() {
   const unmatched = results.filter(r => !r.matched);
   const rows = [
-    ['Matrícula', 'Nombre Geotab', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia (km)', 'Enlace Verificación MyGeotab'],
+    ['Matrícula', 'Nombre Geotab', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia Geotab (km)', 'Viajes en APP', 'Distancia APP (km)', 'Enlace Verificación MyGeotab'],
     ...unmatched.map(r => [
       r.plateOrig, r.deviceName, r.geotabDriverName,
       fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
-      r.gDur, r.gDist, buildMapUrl(r)
+      r.gDur, r.gDist, r.csvCount, r.csvTotalDist, buildMapUrl(r)
     ])
   ];
 
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet(rows);
-  ws1['!cols'] = [12, 15, 25, 12, 10, 10, 15, 15, 80].map(w => ({wch: w}));
+  ws1['!cols'] = [12, 15, 25, 12, 10, 10, 15, 18, 15, 18, 80].map(w => ({wch: w}));
   XLSX.utils.book_append_sheet(wb, ws1, 'Trips sin registrar');
   
   const today = new Date().toISOString().slice(0,10);
