@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Comparador de Viajes VTC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* ── TOKENS ─────────────────────────────────────────── */
+:root{
+  --ink:        #1a1a2e;
+  --ink-mid:    #4a4a6a;
+  --ink-light:  #8888aa;
+  --surface:    #f7f7fb;
+  --card:       #ffffff;
+  --border:     #e2e2ee;
+  --border-mid: #c8c8e0;
+  --accent:     #3d5af1;
+  --accent-dim: #e8ecfe;
+  --ok:         #1a9e6e;
+  --ok-dim:     #e0f5ed;
+  --warn:       #d97706;
+  --warn-dim:   #fef3c7;
+  --danger:     #dc2626;
+  --danger-dim: #fee2e2;
+  --radius:     10px;
+  --radius-sm:  6px;
+  --shadow:     0 1px 3px rgba(0,0,40,.07), 0 4px 12px rgba(0,0,40,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:14px;
+     background:var(--surface);color:var(--ink);min-height:100vh;}
+
+/* ── HEADER ─────────────────────────────────────────── */
+.header{
+  background:var(--card);border-bottom:1px solid var(--border);
+  padding:0 24px;height:54px;display:flex;align-items:center;
+  justify-content:space-between;position:sticky;top:0;z-index:200;
+}
+.header-left{display:flex;align-items:center;gap:10px;}
+.header-logo{
+  width:32px;height:32px;border-radius:8px;
+  background:var(--accent);display:flex;align-items:center;justify-content:center;
+}
+.header-logo svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round;}
+.header h1{font-size:15px;font-weight:600;color:var(--ink);}
+.header-sub{font-size:12px;color:var(--ink-light);margin-left:4px;}
+.badge-db{
+  background:var(--accent-dim);color:var(--accent);
+  font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;
+  letter-spacing:.03em;
+}
+
+/* ── LAYOUT ─────────────────────────────────────────── */
+.main{padding:20px 24px;max-width:1380px;}
+
+/* ── UPLOAD ZONE ────────────────────────────────────── */
+.upload-zone{
+  border:2px dashed var(--border-mid);border-radius:var(--radius);
+  padding:36px 24px;text-align:center;cursor:pointer;
+  transition:border-color .15s,background .15s;
+  background:var(--card);margin-bottom:20px;
+}
+.upload-zone:hover,.upload-zone.drag{
+  border-color:var(--accent);background:var(--accent-dim);}
+.upload-zone svg{width:36px;height:36px;stroke:var(--ink-light);fill:none;
+  stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;margin-bottom:10px;}
+.upload-zone.drag svg{stroke:var(--accent);}
+.upload-zone p{color:var(--ink-mid);font-size:13px;}
+.upload-zone strong{color:var(--accent);}
+.upload-zone input{display:none;}
+
+/* ── SETTINGS BAR ───────────────────────────────────── */
+.settings-bar{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;
+  display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;
+}
+.setting-group{display:flex;flex-direction:column;gap:4px;}
+.setting-group label{font-size:11px;font-weight:600;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:.05em;}
+.setting-group input,.setting-group select{
+  height:34px;border:1px solid var(--border-mid);border-radius:var(--radius-sm);
+  padding:0 10px;font-size:13px;color:var(--ink);background:#fff;outline:none;
+  min-width:130px;
+}
+.setting-group input:focus,.setting-group select:focus{
+  border-color:var(--accent);box-shadow:0 0 0 3px rgba(61,90,241,.12);}
+
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;
+  font-weight:600;cursor:pointer;border:1px solid var(--border-mid);
+  background:#fff;color:var(--ink);transition:all .12s;
+}
+.btn:hover{background:var(--surface);}
+.btn:active{transform:scale(.98);}
+.btn svg{width:14px;height:14px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn-primary:hover{background:#2d49e0;}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed;}
+.btn-ghost{border-color:transparent;background:transparent;}
+.btn-ghost:hover{background:var(--surface);}
+
+/* ── METRICS ────────────────────────────────────────── */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:12px;margin-bottom:20px;}
+.metric{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px 16px;
+  display:flex;flex-direction:column;gap:4px;
+}
+.metric-label{font-size:11px;font-weight:600;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:.05em;}
+.metric-value{font-size:28px;font-weight:700;line-height:1.1;color:var(--ink);}
+.metric-sub{font-size:11px;color:var(--ink-light);}
+.metric.m-danger .metric-value{color:var(--danger);}
+.metric.m-ok .metric-value{color:var(--ok);}
+.metric.m-warn .metric-value{color:var(--warn);}
+.metric.m-accent .metric-value{color:var(--accent);}
+
+/* ── PROGRESS BAR ───────────────────────────────────── */
+.coverage-bar-wrap{margin-bottom:20px;}
+.coverage-label{font-size:12px;color:var(--ink-mid);margin-bottom:6px;
+  display:flex;justify-content:space-between;}
+.coverage-bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;}
+.coverage-fill{height:100%;border-radius:4px;background:var(--ok);
+  transition:width .6s ease;}
+
+/* ── TABLE CARD ─────────────────────────────────────── */
+.table-card{background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+.table-toolbar{
+  padding:12px 18px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+}
+.table-title{font-size:14px;font-weight:600;color:var(--ink);}
+.table-controls{display:flex;gap:8px;align-items:center;}
+.search{
+  height:32px;border:1px solid var(--border-mid);border-radius:var(--radius-sm);
+  padding:0 10px;font-size:13px;outline:none;width:210px;color:var(--ink);
+}
+.search:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(61,90,241,.1);}
+
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead th{
+  padding:9px 14px;text-align:left;
+  font-size:11px;font-weight:700;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:.05em;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  white-space:nowrap;cursor:pointer;user-select:none;
+}
+thead th:hover{background:#ececf6;}
+thead th.sorted{color:var(--accent);}
+tbody tr.vehicle-row{
+  border-bottom:1px solid var(--border);
+  cursor:pointer;transition:background .08s;
+}
+tbody tr.vehicle-row:hover{background:var(--accent-dim);}
+tbody tr.vehicle-row td{padding:11px 14px;font-weight:500;}
+
+/* ── EXPAND ROWS ─────────────────────────────────────── */
+.expand-section{display:none;}
+.expand-section.open{display:table-row-group;}
+.expand-inner td{padding:0!important;}
+.trips-sub{
+  background:#fafafe;border-top:1px solid var(--border);
+  padding:12px 18px 16px 42px;
+}
+.trips-sub-title{font-size:11px;font-weight:700;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;}
+.trip-list{display:flex;flex-direction:column;gap:6px;}
+.trip-item{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:10px 14px;
+  display:grid;grid-template-columns:100px 90px 90px 90px 1fr auto;
+  align-items:center;gap:10px;font-size:12px;
+}
+.trip-item:hover{border-color:var(--accent);}
+.trip-date{font-weight:600;color:var(--ink);}
+.trip-time{color:var(--ink-mid);}
+.trip-dist{font-weight:600;color:var(--accent);}
+.trip-dur{color:var(--ink-mid);}
+.trip-route{color:var(--ink-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:11px;}
+.trip-actions{display:flex;gap:6px;}
+.trip-link{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;
+  background:var(--accent-dim);color:var(--accent);
+  text-decoration:none;border:1px solid transparent;
+  transition:background .1s;
+}
+.trip-link:hover{background:#d5dcfc;}
+
+/* ── PILLS ───────────────────────────────────────────── */
+.pill{display:inline-flex;align-items:center;padding:2px 8px;
+  border-radius:20px;font-size:11px;font-weight:600;}
+.pill-ok{background:var(--ok-dim);color:var(--ok);}
+.pill-warn{background:var(--warn-dim);color:var(--warn);}
+.pill-danger{background:var(--danger-dim);color:var(--danger);}
+.pill-neutral{background:var(--surface);color:var(--ink-light);border:1px solid var(--border);}
+
+/* ── MINI BAR ────────────────────────────────────────── */
+.mini-bar{display:flex;align-items:center;gap:6px;}
+.mini-bar-bg{width:80px;height:5px;background:var(--border);border-radius:3px;}
+.mini-bar-fill{height:100%;border-radius:3px;}
+
+/* ── STATE ───────────────────────────────────────────── */
+.state{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 20px;gap:12px;color:var(--ink-light);}
+.state svg{width:44px;height:44px;stroke:var(--border-mid);fill:none;
+  stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;}
+.state p{font-size:13px;text-align:center;max-width:320px;line-height:1.6;}
+.spinner{width:32px;height:32px;border:2.5px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin .65s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+.progress-msg{font-size:12px;color:var(--ink-mid);text-align:center;margin-top:6px;}
+
+/* ── INFO BAR ────────────────────────────────────────── */
+.info-bar{
+  background:var(--accent-dim);border:1px solid #c5d0fa;
+  border-radius:var(--radius-sm);padding:9px 14px;margin-bottom:16px;
+  font-size:12px;color:var(--accent);display:flex;align-items:center;gap:8px;
+}
+.info-bar svg{width:14px;height:14px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
+
+/* ── TABLE FOOTER ────────────────────────────────────── */
+.table-footer{
+  padding:10px 18px;border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:12px;color:var(--ink-light);
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo">
+      <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
+    </div>
+    <h1>Comparador de Viajes VTC</h1>
+    <span class="header-sub">APP vs Geotab</span>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="badge-db">blun</span>
+    <button class="btn" id="btnExport" style="display:none;" onclick="exportExcel()">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Exportar Excel
+    </button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- UPLOAD -->
+  <div class="upload-zone" id="dropZone"
+    ondragover="onDrag(event,true)" ondragleave="onDrag(event,false)"
+    ondrop="onDrop(event)" onclick="document.getElementById('fileInput').click()">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <p id="uploadLabel">Arrastra el CSV de la APP aquí o <strong>haz clic para seleccionar</strong></p>
+    <input type="file" id="fileInput" accept=".csv" onchange="handleFile(this.files[0])"/>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="settings-bar">
+    <div class="setting-group">
+      <label>Tolerancia horaria (min)</label>
+      <input type="number" id="tolerance" value="5" min="1" max="30" style="width:90px;"/>
+    </div>
+    <div class="setting-group">
+      <label>Distancia mínima Geotab (km)</label>
+      <input type="number" id="minDist" value="0.5" min="0" step="0.1" style="width:110px;"/>
+    </div>
+    <div class="setting-group">
+      <label>Filtrar vehículo</label>
+      <select id="filterVehicle">
+        <option value="all">Todos</option>
+      </select>
+    </div>
+    <div class="setting-group">
+      <label>Mostrar en detalle</label>
+      <select id="filterShow">
+        <option value="unmatched">Solo no registrados en APP</option>
+        <option value="all">Todos los trips de Geotab</option>
+      </select>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end;">
+      <button class="btn btn-primary" id="btnRun" onclick="runComparison()" disabled>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Comparar
+      </button>
+    </div>
+  </div>
+
+  <!-- RESULTADOS -->
+  <div id="resultsArea">
+    <div class="state">
+      <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/></svg>
+      <p>Carga el CSV de la APP y pulsa <strong>Comparar</strong> para detectar viajes no registrados.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── ESTADO GLOBAL ────────────────────────────────────────
+let api = null;
+let csvTrips = [];          // viajes completed del CSV
+let geotabTrips = [];       // trips raw de Geotab
+let results = [];           // trips Geotab enriquecidos con match
+let csvPlates = new Set();  // matrículas normalizadas del CSV
+let sortCol = 'unmatched';
+let sortDir = -1;
+
+// ── INIT GEOTAB ──────────────────────────────────────────
+geotab.addin.vtcComparador = (elt, service) => { api = service.api; };
+if (typeof geotab === 'undefined') {
+  window.geotab = { addin: {} };
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('resultsArea').innerHTML =
+      '<div class="state"><div class="spinner"></div><p>Modo standalone — conecta a Geotab para datos reales.</p></div>';
+  });
+}
+
+// ── NORMALIZAR MATRÍCULA ─────────────────────────────────
+// CSV: "4483-LWH"  →  "4483LWH"
+// Geotab: "4483LWH" o "4483 LWH"
+function normPlate(p) {
+  return String(p||'').replace(/[\s\-]/g,'').toUpperCase().trim();
+}
+
+// ── DRAG & DROP ──────────────────────────────────────────
+function onDrag(e, over) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.toggle('drag', over);
+}
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+}
+
+// ── PARSEAR CSV ──────────────────────────────────────────
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    parseCSV(text, file.name);
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function parseCSV(text, fname) {
+  // Quitar BOM
+  text = text.replace(/^\uFEFF/, '');
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const header = lines[0].split(';');
+
+  // Índices de columnas
+  const idx = {};
+  header.forEach((h, i) => { idx[h.trim()] = i; });
+
+  const trips = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(';');
+    const estado = (cols[idx['Estado del viaje']]||'').trim();
+    if (estado !== 'completed') continue;
+
+    const plate = normPlate(cols[idx['Matrícula']]);
+    const reqStr = (cols[idx['Hora de la solicitud del viaje']]||'').trim();
+    const arrStr = (cols[idx['Hora de llegada del viaje']]||'').trim();
+    if (!plate || !reqStr || !arrStr) continue;
+
+    trips.push({
+      uuid: cols[idx['UUID del viaje']],
+      conductor: (cols[idx['Nombre del conductor']]||'') + ' ' + (cols[idx['Apellido del conductor']]||''),
+      plate,
+      plateRaw: cols[idx['Matrícula']],
+      reqTime: parseDate(reqStr),
+      arrTime: parseDate(arrStr),
+      origin:  cols[idx['Dirección de recogida']]||'',
+      dest:    cols[idx['Dirección de destino']]||'',
+      dist:    parseFloat((cols[idx['Distancia del viaje']]||'0').replace(',','.')),
+      product: cols[idx['Tipo de producto']]||'',
+      payment: cols[idx['Tipo de pago']]||'',
+    });
+  }
+
+  csvTrips = trips;
+  csvPlates = new Set(trips.map(t => t.plate));
+
+  document.getElementById('uploadLabel').innerHTML =
+    `<strong style="color:var(--ok);">✓ ${fname}</strong> — ${trips.length.toLocaleString('es')} viajes completados cargados`;
+
+  // Poblar selector de vehículos
+  const sel = document.getElementById('filterVehicle');
+  sel.innerHTML = '<option value="all">Todos</option>';
+  [...csvPlates].sort().forEach(p => {
+    const o = document.createElement('option');
+    o.value = p; o.textContent = p;
+    sel.appendChild(o);
+  });
+
+  document.getElementById('btnRun').disabled = false;
+}
+
+// ── PARSEAR FECHA DD/MM/YYYY HH:MM ───────────────────────
+function parseDate(s) {
+  if (!s) return null;
+  // "30/05/2026 23:44" o "30/05/2026 0:24"
+  const m = s.match(/(\d{1,2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
+}
+
+// ── LLAMADA API GEOTAB ───────────────────────────────────
+function callApi(method, params) {
+  return new Promise((res, rej) => api.call(method, params, res, rej));
+}
+
+// ── COMPARACIÓN PRINCIPAL ────────────────────────────────
+async function runComparison() {
+  if (!api) { alert('Conecta a Geotab para ejecutar la comparación.'); return; }
+  if (csvTrips.length === 0) { alert('Primero carga el CSV.'); return; }
+
+  const tolerance = parseInt(document.getElementById('tolerance').value) || 5;
+  const minDist   = parseFloat(document.getElementById('minDist').value) || 0.5;
+
+  showLoading('Obteniendo vehículos de Geotab…');
+
+  try {
+    // 1. Obtener todos los devices
+    const devices = await callApi('Get', { typeName: 'Device', resultsLimit: 2000 });
+    const deviceMap = {}; // id → device
+    const plateToDevice = {}; // normPlate → device
+    devices.forEach(d => {
+      deviceMap[d.id] = d;
+      const np = normPlate(d.licensePlate);
+      if (np) plateToDevice[np] = d;
+    });
+
+    // 2. Solo dispositivos que están en el CSV
+    const targetDevices = [...csvPlates]
+      .map(p => plateToDevice[p])
+      .filter(Boolean);
+
+    if (targetDevices.length === 0) {
+      showError('No se encontraron vehículos en Geotab que coincidan con las matrículas del CSV.');
+      return;
+    }
+
+    // 3. Obtener trips del período completo del CSV
+    // Período CSV: detectar min/max fecha
+    const allDates = csvTrips.map(t => t.reqTime).filter(Boolean);
+    const minDate = new Date(Math.min(...allDates));
+    const maxDate = new Date(Math.max(...allDates));
+    minDate.setHours(0,0,0,0);
+    maxDate.setHours(23,59,59,999);
+
+    const fromDate = minDate.toISOString();
+    const toDate   = maxDate.toISOString();
+
+    updateLoading(`Descargando trips de Geotab (${targetDevices.length} vehículos, período ${fmtDateShort(minDate)}–${fmtDateShort(maxDate)})…`);
+
+    // Descargar trips por lotes de vehículos para no saturar la API
+    let allTrips = [];
+    for (let i = 0; i < targetDevices.length; i++) {
+      const dev = targetDevices[i];
+      updateLoading(`Descargando trips… vehículo ${i+1}/${targetDevices.length}: ${dev.licensePlate||dev.name}`);
+      try {
+        const trips = await callApi('Get', {
+          typeName: 'Trip',
+          search: {
+            fromDate, toDate,
+            deviceSearch: { id: dev.id }
+          },
+          resultsLimit: 50000
+        });
+        trips.forEach(t => { t._device = dev; });
+        allTrips = allTrips.concat(trips);
+      } catch(e) {
+        console.warn('Error en vehículo', dev.id, e);
+      }
+    }
+
+    updateLoading(`${allTrips.length.toLocaleString('es')} trips descargados. Comparando…`);
+
+    // 4. Filtrar trips de Geotab: distancia > minDist
+    const geotabFiltered = allTrips.filter(t => {
+      const dist = (t.distance || 0) / 1000; // metros → km
+      return dist >= minDist;
+    });
+
+    // 5. Cruzar: para cada trip de Geotab, buscar match en CSV
+    const tolMs = tolerance * 60 * 1000;
+    const enriched = geotabFiltered.map(t => {
+      const dev = t._device;
+      const plate = normPlate(dev.licensePlate);
+      const gStart = new Date(t.start || t.startTime);
+      const gStop  = new Date(t.stop  || t.stopTime);
+      const gDist  = (t.distance || 0) / 1000;
+
+      // Buscar en CSV trips del mismo vehículo con franja solapada ±tolerance
+      const match = csvTrips.find(c => {
+        if (c.plate !== plate) return false;
+        if (!c.reqTime || !c.arrTime) return false;
+        const diffStart = Math.abs(c.reqTime - gStart);
+        const diffEnd   = Math.abs(c.arrTime - gStop);
+        return diffStart <= tolMs && diffEnd <= tolMs;
+      });
+
+      return {
+        // Geotab
+        gId: t.id,
+        gStart, gStop,
+        gDist: +gDist.toFixed(2),
+        gDur: Math.round((gStop - gStart) / 60000), // minutos
+        plate,
+        plateOrig: dev.licensePlate,
+        deviceId: dev.id,
+        deviceName: dev.name,
+        // CSV match
+        matched: !!match,
+        csvUUID: match?.uuid || null,
+        csvConductor: match?.conductor || null,
+        csvDist: match?.dist || null,
+        csvProduct: match?.product || null,
+      };
+    });
+
+    geotabTrips = enriched;
+    results = enriched;
+
+    renderResults(tolerance, minDist, fromDate, toDate);
+
+  } catch(err) {
+    console.error(err);
+    showError('Error al consultar Geotab: ' + (err?.message || String(err)));
+  }
+}
+
+// ── RENDER PRINCIPAL ─────────────────────────────────────
+function renderResults(tolerance, minDist, fromDate, toDate) {
+  const show      = document.getElementById('filterShow').value;
+  const filterPl  = document.getElementById('filterVehicle').value;
+
+  let data = results;
+  if (filterPl !== 'all') data = data.filter(r => r.plate === normPlate(filterPl));
+
+  const totalGeotab   = data.length;
+  const totalMatched  = data.filter(r => r.matched).length;
+  const totalUnmatched= totalGeotab - totalMatched;
+  const coverage      = totalGeotab > 0 ? (totalMatched / totalGeotab * 100) : 0;
+
+  // Agrupar por vehículo
+  const byPlate = {};
+  data.forEach(r => {
+    if (!byPlate[r.plate]) {
+      byPlate[r.plate] = {
+        plate: r.plate, plateOrig: r.plateOrig,
+        deviceName: r.deviceName, deviceId: r.deviceId,
+        total: 0, matched: 0, unmatched: 0, trips: []
+      };
+    }
+    byPlate[r.plate].total++;
+    if (r.matched) byPlate[r.plate].matched++;
+    else byPlate[r.plate].unmatched++;
+    byPlate[r.plate].trips.push(r);
+  });
+
+  let vehicles = Object.values(byPlate);
+  vehicles.sort((a,b) => (a[sortCol] > b[sortCol] ? 1 : -1) * sortDir);
+
+  const html = [];
+
+  // Métricas
+  const coveragePct = coverage.toFixed(1);
+  const coverageClass = coverage >= 85 ? 'm-ok' : coverage >= 60 ? 'm-warn' : 'm-danger';
+
+  html.push(`
+  <div class="info-bar">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    Período: ${fmtDateShort(new Date(fromDate))} – ${fmtDateShort(new Date(toDate))} ·
+    Tolerancia ±${tolerance} min · Distancia mínima ≥ ${minDist} km ·
+    ${csvPlates.size} vehículos en CSV · ${vehicles.length} vehículos con trips en Geotab
+  </div>
+  <div class="metrics">
+    <div class="metric m-accent">
+      <div class="metric-label">Trips en Geotab</div>
+      <div class="metric-value">${totalGeotab.toLocaleString('es')}</div>
+      <div class="metric-sub">mov. real ≥ ${minDist} km</div>
+    </div>
+    <div class="metric m-ok">
+      <div class="metric-label">Registrados en APP</div>
+      <div class="metric-value">${totalMatched.toLocaleString('es')}</div>
+      <div class="metric-sub">${coveragePct}% del total Geotab</div>
+    </div>
+    <div class="metric m-danger">
+      <div class="metric-label">No registrados en APP</div>
+      <div class="metric-value">${totalUnmatched.toLocaleString('es')}</div>
+      <div class="metric-sub">viajes sin reflejo en la APP</div>
+    </div>
+    <div class="metric ${coverageClass}">
+      <div class="metric-label">Cobertura APP</div>
+      <div class="metric-value">${coveragePct}%</div>
+      <div class="metric-sub">trips Geotab cubiertos</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Vehículos analizados</div>
+      <div class="metric-value">${vehicles.length}</div>
+      <div class="metric-sub">${totalUnmatched > 0 ? vehicles.filter(v=>v.unmatched>0).length + ' con gaps' : 'sin gaps'}</div>
+    </div>
+  </div>
+  <div class="coverage-bar-wrap">
+    <div class="coverage-label">
+      <span>Cobertura de la APP</span>
+      <span>${coveragePct}%</span>
+    </div>
+    <div class="coverage-bar">
+      <div class="coverage-fill" style="width:${coveragePct}%;background:${coverage>=85?'var(--ok)':coverage>=60?'var(--warn)':'var(--danger)'};"></div>
+    </div>
+  </div>
+  `);
+
+  // Tabla por vehículo
+  html.push(`
+  <div class="table-card">
+    <div class="table-toolbar">
+      <span class="table-title">Resumen por vehículo</span>
+      <div class="table-controls">
+        <input class="search" id="searchInput" placeholder="Buscar matrícula…" oninput="filterTable()"/>
+      </div>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th onclick="resortBy('plate')" class="${sortCol==='plate'?'sorted':''}">Matrícula</th>
+        <th onclick="resortBy('deviceName')" class="${sortCol==='deviceName'?'sorted':''}">Nombre Geotab</th>
+        <th onclick="resortBy('total')" class="${sortCol==='total'?'sorted':''}">Trips Geotab</th>
+        <th onclick="resortBy('matched')" class="${sortCol==='matched'?'sorted':''}">En APP</th>
+        <th onclick="resortBy('unmatched')" class="${sortCol==='unmatched'?'sorted':''}">No en APP ↓</th>
+        <th onclick="resortBy('_cov')" class="${sortCol==='_cov'?'sorted':''}">Cobertura</th>
+        <th>Nivel</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="vehicleTableBody">
+  `);
+
+  vehicles.forEach((v, vi) => {
+    const cov = v.total > 0 ? (v.matched/v.total*100) : 0;
+    const covLabel = cov.toFixed(0) + '%';
+    const pillClass = cov >= 85 ? 'pill-ok' : cov >= 60 ? 'pill-warn' : 'pill-danger';
+    const nivel = cov >= 85 ? 'Correcto' : cov >= 60 ? 'Revisar' : 'Crítico';
+    const barColor = cov >= 85 ? 'var(--ok)' : cov >= 60 ? 'var(--warn)' : 'var(--danger)';
+
+    // Trips a mostrar en el detalle
+    const showAll = document.getElementById('filterShow').value === 'all';
+    const detailTrips = showAll ? v.trips : v.trips.filter(t => !t.matched);
+    detailTrips.sort((a,b) => a.gStart - b.gStart);
+
+    html.push(`
+    <tr class="vehicle-row" onclick="toggleExpand('exp-${vi}', this)">
+      <td><strong>${v.plateOrig || v.plate}</strong></td>
+      <td style="color:var(--ink-mid)">${v.deviceName}</td>
+      <td>${v.total}</td>
+      <td style="color:var(--ok);font-weight:600;">${v.matched}</td>
+      <td style="color:var(--danger);font-weight:700;">${v.unmatched}</td>
+      <td>
+        <div class="mini-bar">
+          <div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${cov.toFixed(0)}%;background:${barColor};"></div></div>
+          <span>${covLabel}</span>
+        </div>
+      </td>
+      <td><span class="pill ${pillClass}">${nivel}</span></td>
+      <td style="color:var(--ink-light);font-size:12px;">${v.unmatched > 0 ? '▼ ver detalle' : '—'}</td>
+    </tr>
+    `);
+
+    // Sección expandible
+    html.push(`<tr><td colspan="8" style="padding:0;">`);
+    html.push(`<div class="expand-section" id="exp-${vi}">`);
+    if (detailTrips.length === 0) {
+      html.push(`<div class="trips-sub"><p style="font-size:12px;color:var(--ok);">✓ Todos los trips están registrados en la APP.</p></div>`);
+    } else {
+      html.push(`<div class="trips-sub">`);
+      html.push(`<div class="trips-sub-title">${showAll ? 'Todos los trips' : 'Trips NO registrados en APP'} · ${detailTrips.length} viajes</div>`);
+      html.push(`<div class="trip-list">`);
+      detailTrips.forEach(t => {
+        const mapUrl = buildMapUrl(t);
+        const matchBadge = t.matched
+          ? `<span class="pill pill-ok" style="font-size:10px;">En APP</span>`
+          : `<span class="pill pill-danger" style="font-size:10px;">Sin registrar</span>`;
+        html.push(`
+        <div class="trip-item">
+          <span class="trip-date">${fmtDate(t.gStart)}</span>
+          <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
+          <span class="trip-dist">${t.gDist} km</span>
+          <span class="trip-dur">${t.gDur} min</span>
+          <span class="trip-route" title="${t.deviceName}">${t.plateOrig}</span>
+          <div class="trip-actions">
+            ${matchBadge}
+            <a class="trip-link" href="${mapUrl}" target="_blank">
+              <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Ver en mapa
+            </a>
+          </div>
+        </div>`);
+      });
+      html.push(`</div></div>`);
+    }
+    html.push(`</div></td></tr>`);
+  });
+
+  html.push(`</tbody></table></div>`);
+  html.push(`<div class="table-footer">
+    <span>${vehicles.length} vehículos · ${totalUnmatched} trips sin registrar</span>
+    <span style="color:var(--ink-mid);font-size:11px;">Haz clic en una fila para expandir el detalle</span>
+  </div>`);
+  html.push(`</div>`);
+
+  document.getElementById('resultsArea').innerHTML = html.join('');
+  document.getElementById('btnExport').style.display = 'inline-flex';
+}
+
+// ── EXPAND/COLLAPSE ──────────────────────────────────────
+function toggleExpand(id, row) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isOpen = el.classList.contains('open');
+  // Cerrar todos
+  document.querySelectorAll('.expand-section.open').forEach(e => e.classList.remove('open'));
+  if (!isOpen) el.classList.add('open');
+}
+
+// ── FILTRO BÚSQUEDA ──────────────────────────────────────
+function filterTable() {
+  const q = document.getElementById('searchInput')?.value.toLowerCase() || '';
+  document.querySelectorAll('.vehicle-row').forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+    // También ocultar la fila expand siguiente
+    const next = row.nextElementSibling;
+    if (next) next.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+// ── REORDENAR ────────────────────────────────────────────
+function resortBy(col) {
+  if (sortCol === col) sortDir *= -1;
+  else { sortCol = col; sortDir = -1; }
+  // Reconstruir con mismos params
+  renderResults(
+    parseInt(document.getElementById('tolerance').value)||5,
+    parseFloat(document.getElementById('minDist').value)||0.5,
+    new Date(Math.min(...csvTrips.map(t=>t.reqTime))).toISOString(),
+    new Date(Math.max(...csvTrips.map(t=>t.reqTime))).toISOString()
+  );
+}
+
+// ── ENLACE AL MAPA DE GEOTAB ──────────────────────────────
+function buildMapUrl(t) {
+  // Enlace a la vista de historial del dispositivo en MyGeotab
+  const from = encodeURIComponent(t.gStart.toISOString());
+  const to   = encodeURIComponent(t.gStop.toISOString());
+  return `https://my.geotab.com/blun/#tripsHistory,${t.deviceId},${from},${to}`;
+}
+
+// ── EXPORT EXCEL ─────────────────────────────────────────
+function exportExcel() {
+  const unmatched = results.filter(r => !r.matched);
+  const rows = [
+    ['Matrícula','Nombre Geotab','Fecha','Hora inicio','Hora fin','Duración (min)','Distancia (km)','Enlace mapa'],
+    ...unmatched.map(r => [
+      r.plateOrig, r.deviceName,
+      fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
+      r.gDur, r.gDist,
+      buildMapUrl(r)
+    ])
+  ];
+
+  // Hoja resumen por vehículo
+  const byPlate = {};
+  results.forEach(r => {
+    if (!byPlate[r.plate]) byPlate[r.plate] = { plateOrig:r.plateOrig, deviceName:r.deviceName, total:0, matched:0, unmatched:0 };
+    byPlate[r.plate].total++;
+    if (r.matched) byPlate[r.plate].matched++;
+    else byPlate[r.plate].unmatched++;
+  });
+  const summaryRows = [
+    ['Matrícula','Nombre Geotab','Trips Geotab','En APP','No en APP','Cobertura %'],
+    ...Object.values(byPlate).map(v => [
+      v.plateOrig, v.deviceName, v.total, v.matched, v.unmatched,
+      +(v.total>0?(v.matched/v.total*100):0).toFixed(1)
+    ])
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet(rows);
+  ws1['!cols'] = [12,20,12,10,10,10,12,50].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws1, 'Trips sin registrar');
+
+  const ws2 = XLSX.utils.aoa_to_sheet(summaryRows);
+  ws2['!cols'] = [12,20,12,12,12,12].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws2, 'Resumen por vehículo');
+
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `vtc_gaps_${today}.xlsx`);
+}
+
+// ── UTILS ─────────────────────────────────────────────────
+function fmtDate(d) {
+  if (!d) return '';
+  return d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function fmtTime(d) {
+  if (!d) return '';
+  return d.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'});
+}
+function fmtDateShort(d) {
+  if (!d) return '';
+  return d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit'});
+}
+
+function showLoading(msg) {
+  document.getElementById('resultsArea').innerHTML =
+    `<div class="state"><div class="spinner"></div><p class="progress-msg">${msg}</p></div>`;
+  document.getElementById('btnExport').style.display = 'none';
+}
+function updateLoading(msg) {
+  const p = document.querySelector('.progress-msg');
+  if (p) p.textContent = msg;
+}
+function showError(msg) {
+  document.getElementById('resultsArea').innerHTML =
+    `<div class="state"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p>${msg}</p></div>`;
+}
+</script>
+</body>
+</html>
