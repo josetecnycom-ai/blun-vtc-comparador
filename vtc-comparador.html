@@ -91,7 +91,6 @@ let sortCol = 'unmatched';
 let sortDir = -1;
 
 // ── INIT GEOTAB ──────────────────────────────────────────
-geotab.addin.comparadorDeViajesVTC = (elt, service) => { api = service.api; };
 if (typeof geotab === 'undefined') {
   window.geotab = { addin: {} };
   document.addEventListener('DOMContentLoaded', () => {
@@ -99,6 +98,21 @@ if (typeof geotab === 'undefined') {
       '<div class="state"><div class="spinner"></div><p>Modo standalone — conecta a Geotab para datos reales.</p></div>';
   });
 }
+
+geotab.addin.comparadorDeViajesVTC = function () {
+  return {
+    initialize: function (geotabApi, state, callback) {
+      api = geotabApi; // Guardamos la API globalmente
+      callback();      // Notificamos a Geotab que estamos listos
+    },
+    focus: function (geotabApi, state) {
+      // El usuario acaba de abrir la pestaña del Add-in
+    },
+    blur: function (geotabApi, state) {
+      // El usuario cambió de pestaña
+    }
+  };
+};
 
 // ── NORMALIZAR MATRÍCULA ─────────────────────────────────
 // CSV: "4483-LWH"  →  "4483LWH"
