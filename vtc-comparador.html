@@ -143,6 +143,7 @@ function handleFile(file) {
   reader.readAsText(file, 'utf-8');
 }
 
+// ── PARSEAR CSV VTC ──────────────────────────────────────
 function parseCSV(text, fname) {
   text = text.replace(/^\uFEFF/, '');
   const lines = text.split(/\r?\n/).filter(l => l.trim());
@@ -290,11 +291,22 @@ async function runComparison() {
         geotabDriverName = userMap[t.driver.id] || t.driver.id;
       }
 
+      // ── NUEVA LÓGICA DE INTERSECCIÓN TEMPORAL (OVERLAP) ──
       const match = csvTrips.find(c => {
         if (c.plate !== plate) return false;
-        const isAfterStart = gStart >= new Date(c.reqTime.getTime() - tolMs);
-        const isBeforeEnd = gStop <= new Date(c.arrTime.getTime() + tolMs);
-        return isAfterStart && isBeforeEnd;
+
+        // Calculamos los puntos límite del solapamiento
+        const maxStart = Math.max(gStart.getTime(), c.reqTime.getTime());
+        const minEnd = Math.min(gStop.getTime(), c.arrTime.getTime());
+        
+        // Si el final más temprano ocurre después del inicio más tardío, hay coincidencia/solape en el tiempo
+        if (minEnd > maxStart) {
+          return true;
+        }
+
+        // Holgura secundaria: si no se tocan pero el inicio de Geotab está muy cerca del pedido en la APP
+        const diffStart = Math.abs(gStart.getTime() - c.reqTime.getTime());
+        return diffStart <= tolMs;
       });
 
       return {
