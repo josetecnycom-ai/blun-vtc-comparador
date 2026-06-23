@@ -6,6 +6,10 @@
   <title>Comparador de Viajes VTC</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="css/vtc-comparador.css">
+  <style>
+.stop-badge{display:inline-block;background:#fff3cd;color:#856404;padding:2px 8px;border-radius:12px;font-size:11px;margin-top:4px;border:1px solid #ffeeba}
+.trip-item.trip-suspect{border:2px solid #dc3545;background:#fff5f5}
+</style>
 </head>
 <body style="margin: 0; padding: 0; width: 100%; height: 100%; background-color: transparent !important; color: var(--ink);">
 
@@ -201,6 +205,14 @@ function parseDate(s) {
 function callApi(method, params) {
   return new Promise((res, rej) => api.call(method, params, res, rej));
 }
+async function getStopEvents(deviceId,fromDate,toDate){
+ try{
+  return await callApi('Get',{
+   typeName:'ExceptionEvent',
+   search:{fromDate,toDate,deviceSearch:{id:deviceId},ruleSearch:{id:"aqL2ahmjVl0ev8BRJxP6IqA"}},
+   resultsLimit:50000});
+ }catch(e){return [];}
+}
 
 // ── COMPARACIÓN PRINCIPAL ────────────────────────────────
 async function runComparison() {
@@ -253,8 +265,17 @@ async function runComparison() {
           search: { fromDate, toDate, deviceSearch: { id: dev.id } },
           resultsLimit: 50000
         });
-        trips.forEach(t => { t._device = dev; });
-        allTrips = allTrips.concat(trips);
+        const stops=await getStopEvents(dev.id,fromDate,toDate);
+        trips.forEach(t=>{
+          t._device=dev;
+          const ts=new Date(t.start||t.startTime).getTime();
+          const te=new Date(t.stop||t.stopTime).getTime();
+          t._stops=stops.filter(s=>{
+            const st=new Date(s.activeFrom).getTime();
+            return st>=ts && st<=te;
+          });
+        });
+        allTrips=allTrips.concat(trips);
       } catch(e) {
         console.warn('Error en vehículo', dev.id, e);
       }
@@ -299,7 +320,7 @@ async function runComparison() {
         matched: csvCount > 0, // Se considera "registrado" si tiene al menos 1 viaje APP dentro
         csvCount: csvCount,
         csvTotalDist: +csvTotalDist.toFixed(2),
-        discrepancyDist: +(gDist - csvTotalDist).toFixed(2) // Diferencia de KMs
+        discrepancyDist:+(gDist-csvTotalDist).toFixed(2),stopsCount:(t._stops||[]).length
       };
     });
 
@@ -437,7 +458,7 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
           : `<span class="pill pill-danger">Sin registrar (Completamente vacío)</span>`;
 
         html.push(`
-        <div class="trip-item">
+        <div class="trip-item ${(!t.matched&&t.stopsCount>0)?'trip-suspect':''}">
           <span class="trip-date">${fmtDateShort(t.gStart)}</span>
           <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
           <span class="trip-dist">
@@ -449,6 +470,7 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
           </span>
           <div class="trip-actions">
             ${matchBadge}
+            ${t.stopsCount>0?`<div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>`:''}
             <a class="trip-link" href="${mapUrl}" target="_blank">Ver Historial</a>
           </div>
         </div>`);
