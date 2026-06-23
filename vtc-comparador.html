@@ -223,13 +223,20 @@ async function runComparison() {
   showLoading('Obteniendo vehículos de Geotab…');
 
   try {
-    // 1. Obtener todos los devices
+    // 1. Obtener todos los devices y users
     const devices = await callApi('Get', { typeName: 'Device', resultsLimit: 2000 });
+    const users = await callApi('Get', { typeName: 'User', resultsLimit: 5000 });
+    const userMap = {};
+    users.forEach(u => {
+      userMap[u.id] = (u.firstName && u.lastName) ? (u.firstName + ' ' + u.lastName) : (u.name || 'Desconocido');
+    });
+
     const deviceMap = {}; // id → device
     const plateToDevice = {}; // normPlate → device
     devices.forEach(d => {
       deviceMap[d.id] = d;
-      const np = normPlate(d.licensePlate);
+      // En este cliente las matrículas están en el nombre del dispositivo
+      const np = normPlate(d.name);
       if (np) plateToDevice[np] = d;
     });
 
@@ -289,18 +296,28 @@ async function runComparison() {
     const tolMs = tolerance * 60 * 1000;
     const enriched = geotabFiltered.map(t => {
       const dev = t._device;
-      const plate = normPlate(dev.licensePlate);
+      const plate = normPlate(dev.name); // Buscamos por nombre
       const gStart = new Date(t.start || t.startTime);
       const gStop  = new Date(t.stop  || t.stopTime);
       const gDist  = (t.distance || 0) / 1000;
 
-      // Buscar en CSV trips del mismo vehículo con franja solapada ±tolerance
+      let geotabDriverName = "Desconocido";
+      if (t.driver && t.driver.id && t.driver.id !== "UnknownDriverId") {
+        geotabDriverName = userMap[t.driver.id] || t.driver.id;
+      }
+
+      // Buscar en CSV trips del mismo vehículo donde el viaje de Geotab esté COMPLETO
+      // dentro del tiempo del viaje de la APP (± tolerancia)
       const match = csvTrips.find(c => {
         if (c.plate !== plate) return false;
         if (!c.reqTime || !c.arrTime) return false;
-        const diffStart = Math.abs(c.reqTime - gStart);
-        const diffEnd   = Math.abs(c.arrTime - gStop);
-        return diffStart <= tolMs && diffEnd <= tolMs;
+        
+        // El viaje de Geotab empieza en o después del inicio de la APP (considerando tolerancia extra)
+        const isAfterStart = gStart >= new Date(c.reqTime.getTime() - tolMs);
+        // El viaje de Geotab acaba en o antes del final de la APP (considerando tolerancia extra)
+        const isBeforeEnd = gStop <= new Date(c.arrTime.getTime() + tolMs);
+        
+        return isAfterStart && isBeforeEnd;
       });
 
       return {
@@ -310,9 +327,10 @@ async function runComparison() {
         gDist: +gDist.toFixed(2),
         gDur: Math.round((gStop - gStart) / 60000), // minutos
         plate,
-        plateOrig: dev.licensePlate,
+        plateOrig: dev.name,
         deviceId: dev.id,
         deviceName: dev.name,
+        geotabDriverName,
         // CSV match
         matched: !!match,
         csvUUID: match?.uuid || null,
@@ -490,12 +508,14 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
           <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
           <span class="trip-dist">${t.gDist} km</span>
           <span class="trip-dur">${t.gDur} min</span>
-          <span class="trip-route" title="${t.deviceName}">${t.plateOrig}</span>
+          <span class="trip-route" title="Conductor Geotab: ${t.geotabDriverName}">
+            ${t.plateOrig}<br><small style="color:var(--ink-light);font-size:10px;">${t.geotabDriverName}</small>
+          </span>
           <div class="trip-actions">
             ${matchBadge}
             <a class="trip-link" href="${mapUrl}" target="_blank">
               <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              Ver en mapa
+              Historial
             </a>
           </div>
         </div>`);
@@ -563,9 +583,9 @@ function buildMapUrl(t) {
 function exportExcel() {
   const unmatched = results.filter(r => !r.matched);
   const rows = [
-    ['Matrícula','Nombre Geotab','Fecha','Hora inicio','Hora fin','Duración (min)','Distancia (km)','Enlace mapa'],
+    ['Matrícula','Nombre Geotab','Conductor Geotab','Fecha','Hora inicio','Hora fin','Duración (min)','Distancia (km)','Enlace Historial'],
     ...unmatched.map(r => [
-      r.plateOrig, r.deviceName,
+      r.plateOrig, r.deviceName, r.geotabDriverName,
       fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
       r.gDur, r.gDist,
       buildMapUrl(r)
