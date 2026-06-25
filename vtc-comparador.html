@@ -14,7 +14,7 @@
 <div class="header">
   <div class="header-left">
     <div class="header-logo">
-      <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
     </div>
     <h1>Comparador de Viajes VTC</h1>
     <span class="header-sub">APP vs Geotab</span>
@@ -235,49 +235,20 @@ async function runComparison() {
     const plateToDevice = {}; // normPlate → device
     devices.forEach(d => {
       deviceMap[d.id] = d;
-      // Cruzar por nombre del dispositivo (normalizado)
       const byName = normPlate(d.name);
       if (byName) plateToDevice[byName] = d;
-      // Cruzar también por licensePlate como fallback
       const byLic = normPlate(d.licensePlate);
       if (byLic && !plateToDevice[byLic]) plateToDevice[byLic] = d;
     });
-
-    // Diagnóstico en consola
-    console.log('=== DIAGNÓSTICO CRUCE MATRÍCULAS ===');
-    console.table([...csvPlates].map(p => ({
-      csvPlate: p, encontrado: !!plateToDevice[p],
-      geotabName: plateToDevice[p]?.name || '—',
-      geotabLicensePlate: plateToDevice[p]?.licensePlate || '—'
-    })));
-    console.log('Devices Geotab (primeros 20):', devices.slice(0,20).map(d => ({
-      name: d.name, licensePlate: d.licensePlate,
-      nameNorm: normPlate(d.name), licNorm: normPlate(d.licensePlate)
-    })));
+    console.log('=== CRUCE ==='); console.table([...csvPlates].map(p=>({csv:p,match:!!plateToDevice[p],name:plateToDevice[p]?.name||'—'})));
 
     // 2. Solo dispositivos que están en el CSV
-    const targetDevices = [...new Set(
-      [...csvPlates].map(p => plateToDevice[p]).filter(Boolean)
-    )];
+    const targetDevices = [...new Set([...csvPlates].map(p => plateToDevice[p]).filter(Boolean))];
 
     if (targetDevices.length === 0) {
       const csvList = [...csvPlates].join(', ');
-      const geotabRows = devices.slice(0,25).map(d =>
-        `<tr><td style="padding:2px 10px;border-bottom:1px solid #eee">${d.name}</td>` +
-        `<td style="padding:2px 10px;border-bottom:1px solid #eee">${d.licensePlate||'—'}</td>` +
-        `<td style="padding:2px 10px;border-bottom:1px solid #eee;color:#888">${normPlate(d.name)}</td></tr>`
-      ).join('');
-      showError(
-        '<strong>⚠️ Sin coincidencias entre el CSV y Geotab.</strong><br><br>' +
-        '<b>Matrículas CSV normalizadas:</b><br>' +
-        '<code style="background:#f5f5f5;padding:4px 8px;border-radius:4px;display:inline-block;margin:4px 0;font-size:11px;">' + csvList + '</code><br><br>' +
-        '<b>Primeros 25 dispositivos Geotab:</b><br>' +
-        '<table style="font-size:11px;border-collapse:collapse;margin-top:4px;background:#fff;border:1px solid #eee;border-radius:4px;">' +
-        '<tr style="background:#f0f0f0;font-weight:bold;">' +
-        '<td style="padding:4px 10px;">Nombre</td><td style="padding:4px 10px;">Matrícula</td><td style="padding:4px 10px;">Nombre normalizado</td></tr>' +
-        geotabRows + '</table><br>' +
-        '<em style="font-size:11px;color:#888">Abre F12 → Consola para ver el diagnóstico completo.</em>'
-      );
+      const rows = devices.slice(0,30).map(d=>`<tr><td style="padding:3px 8px">${d.name||'—'}</td><td style="padding:3px 8px">${d.licensePlate||'—'}</td><td style="padding:3px 8px;color:#888">${normPlate(d.name)}</td></tr>`).join('');
+      showError('<strong>⚠️ Sin coincidencias CSV ↔ Geotab</strong><br><b>CSV:</b> <code style="font-size:11px">'+ csvList +'</code><br><br><b>Devices Geotab:</b><br><table style="font-size:11px;border-collapse:collapse;background:#fff;border:1px solid #eee"><tr style="background:#f0f0f0;font-weight:bold"><td style="padding:4px 8px">Nombre</td><td style="padding:4px 8px">Matrícula</td><td style="padding:4px 8px">Nombre norm.</td></tr>'+rows+'</table>');
       return;
     }
 
@@ -308,68 +279,78 @@ async function runComparison() {
           },
           resultsLimit: 50000
         });
-        trips.forEach(t => { t._device = dev; });
+        let stops = [];
+        try {
+          stops = await callApi('Get', {
+            typeName: 'ExceptionEvent',
+            search: { fromDate, toDate, deviceSearch: { id: dev.id }, ruleSearch: { id: 'aqL2ahmjVl0ev8BRJxP6IqA' } },
+            resultsLimit: 50000
+          });
+        } catch(se) { console.warn('Sin paradas para', dev.name); }
+        console.log(`${dev.licensePlate||dev.name}: ${trips.length} trips, ${stops.length} paradas`);
+        trips.forEach(t => {
+          t._device = dev;
+          const ts = new Date(t.start||t.startTime).getTime();
+          const te = new Date(t.stop||t.stopTime).getTime();
+          t._stops = stops.filter(s => { const st = new Date(s.activeFrom).getTime(); return st>=ts && st<=te; });
+        });
         allTrips = allTrips.concat(trips);
       } catch(e) {
-        console.warn('Error en vehículo', dev.id, e);
+        console.error('Error trips', dev.licensePlate||dev.name, e);
       }
     }
+    console.log(`Total: ${allTrips.length} trips`);
+    if (allTrips.length === 0) { showError('No se encontraron trips para el período. Revisa F12.'); return; }
 
     updateLoading(`${allTrips.length.toLocaleString('es')} trips descargados. Comparando…`);
 
     // 4. Filtrar trips de Geotab: distancia > minDist
-    const geotabFiltered = allTrips.filter(t => {
-      const dist = (t.distance || 0) / 1000; // metros → km
-      return dist >= minDist;
-    });
-
-    // 5. Cruzar: para cada trip de Geotab, buscar match en CSV
+    const geotabFiltered = allTrips.filter(t => (t.distance || 0) / 1000 >= minDist);
     const tolMs = tolerance * 60 * 1000;
+
     const enriched = geotabFiltered.map(t => {
       const dev = t._device;
-      const plate = normPlate(dev.name); // Buscamos por nombre
+      const plateByName = normPlate(dev.name);
+      const plateByLic  = normPlate(dev.licensePlate);
+      const plate = csvPlates.has(plateByName) ? plateByName : csvPlates.has(plateByLic) ? plateByLic : plateByName;
       const gStart = new Date(t.start || t.startTime);
       const gStop  = new Date(t.stop  || t.stopTime);
       const gDist  = (t.distance || 0) / 1000;
 
-      let geotabDriverName = "Desconocido";
-      if (t.driver && t.driver.id && t.driver.id !== "UnknownDriverId") {
+      let geotabDriverName = 'Sin conductor asignado';
+      if (t.driver?.id && !['UnknownDriverId','NoDriverId'].includes(t.driver.id)) {
         geotabDriverName = userMap[t.driver.id] || t.driver.id;
       }
 
-      // Buscar en CSV trips del mismo vehículo donde el viaje de Geotab esté COMPLETO
-      // dentro del tiempo del viaje de la APP (± tolerancia)
-      const match = csvTrips.find(c => {
+      // Relación 1:N — todos los viajes APP dentro de la ventana temporal del trip Geotab
+      const matchedCSVTrips = csvTrips.filter(c => {
         if (c.plate !== plate) return false;
         if (!c.reqTime || !c.arrTime) return false;
-        
-        // El viaje de Geotab empieza en o después del inicio de la APP (considerando tolerancia extra)
-        const isAfterStart = gStart >= new Date(c.reqTime.getTime() - tolMs);
-        // El viaje de Geotab acaba en o antes del final de la APP (considerando tolerancia extra)
-        const isBeforeEnd = gStop <= new Date(c.arrTime.getTime() + tolMs);
-        
-        return isAfterStart && isBeforeEnd;
+        const ws = gStart.getTime() - tolMs;
+        const we = gStop.getTime()  + tolMs;
+        return c.reqTime.getTime() >= ws && c.arrTime.getTime() <= we;
       });
 
+      const csvCount     = matchedCSVTrips.length;
+      const csvTotalDist = matchedCSVTrips.reduce((s,c) => s+(c.dist||0), 0);
+
       return {
-        // Geotab
-        gId: t.id,
-        gStart, gStop,
-        gDist: +gDist.toFixed(2),
-        gDur: Math.round((gStop - gStart) / 60000), // minutos
+        gId: t.id, gStart, gStop,
+        gDist:        +gDist.toFixed(2),
+        gDur:         Math.round((gStop - gStart) / 60000),
         plate,
-        plateOrig: dev.name,
-        deviceId: dev.id,
-        deviceName: dev.name,
+        plateOrig:    dev.licensePlate || dev.name,
+        deviceId:     dev.id,
+        deviceName:   dev.name,
         geotabDriverName,
-        // CSV match
-        matched: !!match,
-        csvUUID: match?.uuid || null,
-        csvConductor: match?.conductor || null,
-        csvDist: match?.dist || null,
-        csvProduct: match?.product || null,
+        matched:      csvCount > 0,
+        csvCount,
+        csvTotalDist: +csvTotalDist.toFixed(2),
+        discrepancyDist: +(gDist - csvTotalDist).toFixed(2),
+        stopsCount:   (t._stops||[]).length,
       };
     });
+    console.log(`Enriched: ${enriched.length} | matched: ${enriched.filter(e=>e.matched).length} | unmatched: ${enriched.filter(e=>!e.matched).length}`);
 
     geotabTrips = enriched;
     results = enriched;
