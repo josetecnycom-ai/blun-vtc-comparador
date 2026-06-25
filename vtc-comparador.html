@@ -1,93 +1,92 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Comparador de Viajes VTC</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <link rel="stylesheet" href="css/vtc-comparador.css">
-  <style>
-.stop-badge{display:inline-block;background:#fff3cd;color:#856404;padding:2px 8px;border-radius:12px;font-size:11px;margin-top:4px;border:1px solid #ffeeba}
-.trip-item.trip-suspect{border:2px solid #dc3545;background:#fff5f5}
-</style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Comparador de Viajes VTC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="css/vtc-comparador.css">
 </head>
 <body style="margin: 0; padding: 0; width: 100%; height: 100%; background-color: transparent !important; color: var(--ink);">
 
 <div id="vtc-app-wrapper">
-  <div class="header">
-    <div class="header-left">
-      <div class="header-logo">
-        <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
-      </div>
-      <h1>Comparador de Viajes VTC</h1>
-      <span class="header-sub">APP vs Geotab</span>
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo">
+      <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <span class="badge-db" id="dbNameBadge">Desconectado</span>
-      <button class="btn" id="btnExport" style="display:none;" onclick="exportExcel()">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Exportar Excel
+    <h1>Comparador de Viajes VTC</h1>
+    <span class="header-sub">APP vs Geotab</span>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span class="badge-db">blun</span>
+    <button class="btn" id="btnExport" style="display:none;" onclick="exportExcel()">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Exportar Excel
+    </button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- UPLOAD -->
+  <div class="upload-zone" id="dropZone"
+    ondragover="onDrag(event,true)" ondragleave="onDrag(event,false)"
+    ondrop="onDrop(event)" onclick="document.getElementById('fileInput').click()">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <p id="uploadLabel">Arrastra el CSV de la APP aquí o <strong>haz clic para seleccionar</strong></p>
+    <input type="file" id="fileInput" accept=".csv" onchange="handleFile(this.files[0])"/>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="settings-bar">
+    <div class="setting-group">
+      <label>Tolerancia horaria (min)</label>
+      <input type="number" id="tolerance" value="5" min="1" max="30" style="width:90px;"/>
+    </div>
+    <div class="setting-group">
+      <label>Distancia mínima Geotab (km)</label>
+      <input type="number" id="minDist" value="0.5" min="0" step="0.1" style="width:110px;"/>
+    </div>
+    <div class="setting-group">
+      <label>Filtrar vehículo</label>
+      <select id="filterVehicle">
+        <option value="all">Todos</option>
+      </select>
+    </div>
+    <div class="setting-group">
+      <label>Mostrar en detalle</label>
+      <select id="filterShow">
+        <option value="unmatched">Solo no registrados en APP</option>
+        <option value="all">Todos los trips de Geotab</option>
+      </select>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end;">
+      <button class="btn btn-primary" id="btnRun" onclick="runComparison()" disabled>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Comparar
       </button>
     </div>
   </div>
 
-  <div class="main">
-    <div class="upload-zone" id="dropZone"
-      ondragover="onDrag(event,true)" ondragleave="onDrag(event,false)"
-      ondrop="onDrop(event)" onclick="document.getElementById('fileInput').click()">
-      <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      <p id="uploadLabel">Arrastra el CSV de la APP aquí o <strong>haz clic para seleccionar</strong></p>
-      <input type="file" id="fileInput" accept=".csv" onchange="handleFile(this.files[0])"/>
-    </div>
-
-    <div class="settings-bar">
-      <div class="setting-group">
-        <label>Tolerancia horaria (min)</label>
-        <input type="number" id="tolerance" value="5" min="1" max="30" style="width:90px;"/>
-      </div>
-      <div class="setting-group">
-        <label>Distancia mínima Geotab (km)</label>
-        <input type="number" id="minDist" value="0.5" min="0" step="0.1" style="width:110px;"/>
-      </div>
-      <div class="setting-group">
-        <label>Filtrar vehículo</label>
-        <select id="filterVehicle">
-          <option value="all">Todos</option>
-        </select>
-      </div>
-      <div class="setting-group">
-        <label>Mostrar en detalle</label>
-        <select id="filterShow">
-          <option value="unmatched">Solo no registrados en APP</option>
-          <option value="all">Todos los trips de Geotab</option>
-        </select>
-      </div>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end;">
-        <button class="btn btn-primary" id="btnRun" onclick="runComparison()" disabled>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          Comparar
-        </button>
-      </div>
-    </div>
-
-    <div id="resultsArea">
-      <div class="state">
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#ccc" stroke-width="2"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/></svg>
-        <p>Carga el CSV de la APP y pulsa <strong>Comparar</strong> para detectar viajes no registrados.</p>
-      </div>
+  <!-- RESULTADOS -->
+  <div id="resultsArea">
+    <div class="state">
+      <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/></svg>
+      <p>Carga el CSV de la APP y pulsa <strong>Comparar</strong> para detectar viajes no registrados.</p>
     </div>
   </div>
-</div>
 
+</div>
+</div>
 <script>
 // ── ESTADO GLOBAL ────────────────────────────────────────
 let api = null;
-let serverStr = 'my.geotab.com';
-let databaseStr = '';
-let csvTrips = [];          
-let geotabTrips = [];       
-let results = [];           
-let csvPlates = new Set();  
+let csvTrips = [];          // viajes completed del CSV
+let geotabTrips = [];       // trips raw de Geotab
+let results = [];           // trips Geotab enriquecidos con match
+let csvPlates = new Set();  // matrículas normalizadas del CSV
 let sortCol = 'unmatched';
 let sortDir = -1;
 
@@ -100,25 +99,24 @@ if (typeof geotab === 'undefined') {
   });
 }
 
-geotab.addin.blunvtccomparador = function () {
+geotab.addin.comparadorDeViajesVTC = function () {
   return {
     initialize: function (geotabApi, state, callback) {
-      api = geotabApi; 
-      api.getSession(function(session) {
-        if(session) {
-          serverStr = session.server || 'my.geotab.com';
-          databaseStr = session.database || 'Desconocida';
-          document.getElementById('dbNameBadge').textContent = databaseStr;
-        }
-        callback();      
-      });
+      api = geotabApi; // Guardamos la API globalmente
+      callback();      // Notificamos a Geotab que estamos listos
     },
-    focus: function (geotabApi, state) {},
-    blur: function (geotabApi, state) {}
+    focus: function (geotabApi, state) {
+      // El usuario acaba de abrir la pestaña del Add-in
+    },
+    blur: function (geotabApi, state) {
+      // El usuario cambió de pestaña
+    }
   };
 };
 
 // ── NORMALIZAR MATRÍCULA ─────────────────────────────────
+// CSV: "4483-LWH"  →  "4483LWH"
+// Geotab: "4483LWH" o "4483 LWH"
 function normPlate(p) {
   return String(p||'').replace(/[\s\-]/g,'').toUpperCase().trim();
 }
@@ -147,10 +145,12 @@ function handleFile(file) {
 }
 
 function parseCSV(text, fname) {
+  // Quitar BOM
   text = text.replace(/^\uFEFF/, '');
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   const header = lines[0].split(';');
 
+  // Índices de columnas
   const idx = {};
   header.forEach((h, i) => { idx[h.trim()] = i; });
 
@@ -160,30 +160,33 @@ function parseCSV(text, fname) {
     const estado = (cols[idx['Estado del viaje']]||'').trim();
     if (estado !== 'completed') continue;
 
-    const plateRaw = cols[idx['Matrícula']] || '';
-    const plate = normPlate(plateRaw);
+    const plate = normPlate(cols[idx['Matrícula']]);
     const reqStr = (cols[idx['Hora de la solicitud del viaje']]||'').trim();
     const arrStr = (cols[idx['Hora de llegada del viaje']]||'').trim();
-    
     if (!plate || !reqStr || !arrStr) continue;
 
     trips.push({
       uuid: cols[idx['UUID del viaje']],
       conductor: (cols[idx['Nombre del conductor']]||'') + ' ' + (cols[idx['Apellido del conductor']]||''),
       plate,
-      plateRaw,
+      plateRaw: cols[idx['Matrícula']],
       reqTime: parseDate(reqStr),
       arrTime: parseDate(arrStr),
-      dist: parseFloat((cols[idx['Distancia del viaje']]||'0').replace(',','.'))
+      origin:  cols[idx['Dirección de recogida']]||'',
+      dest:    cols[idx['Dirección de destino']]||'',
+      dist:    parseFloat((cols[idx['Distancia del viaje']]||'0').replace(',','.')),
+      product: cols[idx['Tipo de producto']]||'',
+      payment: cols[idx['Tipo de pago']]||'',
     });
   }
 
-  csvTrips = trips.filter(t => t.reqTime && t.arrTime); 
-  csvPlates = new Set(csvTrips.map(t => t.plate));
+  csvTrips = trips;
+  csvPlates = new Set(trips.map(t => t.plate));
 
   document.getElementById('uploadLabel').innerHTML =
-    `<strong style="color:var(--ok);">✓ ${fname}</strong> — ${csvTrips.length.toLocaleString('es')} viajes completados cargados`;
+    `<strong style="color:var(--ok);">✓ ${fname}</strong> — ${trips.length.toLocaleString('es')} viajes completados cargados`;
 
+  // Poblar selector de vehículos
   const sel = document.getElementById('filterVehicle');
   sel.innerHTML = '<option value="all">Todos</option>';
   [...csvPlates].sort().forEach(p => {
@@ -195,23 +198,18 @@ function parseCSV(text, fname) {
   document.getElementById('btnRun').disabled = false;
 }
 
+// ── PARSEAR FECHA DD/MM/YYYY HH:MM ───────────────────────
 function parseDate(s) {
   if (!s) return null;
+  // "30/05/2026 23:44" o "30/05/2026 0:24"
   const m = s.match(/(\d{1,2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
   if (!m) return null;
   return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
 }
 
+// ── LLAMADA API GEOTAB ───────────────────────────────────
 function callApi(method, params) {
   return new Promise((res, rej) => api.call(method, params, res, rej));
-}
-async function getStopEvents(deviceId,fromDate,toDate){
- try{
-  return await callApi('Get',{
-   typeName:'ExceptionEvent',
-   search:{fromDate,toDate,deviceSearch:{id:deviceId},ruleSearch:{id:"aqL2ahmjVl0ev8BRJxP6IqA"}},
-   resultsLimit:50000});
- }catch(e){return [];}
 }
 
 // ── COMPARACIÓN PRINCIPAL ────────────────────────────────
@@ -225,27 +223,66 @@ async function runComparison() {
   showLoading('Obteniendo vehículos de Geotab…');
 
   try {
+    // 1. Obtener todos los devices y users
     const devices = await callApi('Get', { typeName: 'Device', resultsLimit: 2000 });
     const users = await callApi('Get', { typeName: 'User', resultsLimit: 5000 });
-    
     const userMap = {};
     users.forEach(u => {
       userMap[u.id] = (u.firstName && u.lastName) ? (u.firstName + ' ' + u.lastName) : (u.name || 'Desconocido');
     });
 
-    const plateToDevice = {}; 
+    const deviceMap = {}; // id → device
+    const plateToDevice = {}; // normPlate → device
     devices.forEach(d => {
-      const np = normPlate(d.name);
-      if (np) plateToDevice[np] = d;
+      deviceMap[d.id] = d;
+      // Cruzar por nombre del dispositivo (normalizado)
+      const byName = normPlate(d.name);
+      if (byName) plateToDevice[byName] = d;
+      // Cruzar también por licensePlate como fallback
+      const byLic = normPlate(d.licensePlate);
+      if (byLic && !plateToDevice[byLic]) plateToDevice[byLic] = d;
     });
 
-    const targetDevices = [...csvPlates].map(p => plateToDevice[p]).filter(Boolean);
+    // Diagnóstico en consola
+    console.log('=== DIAGNÓSTICO CRUCE MATRÍCULAS ===');
+    console.table([...csvPlates].map(p => ({
+      csvPlate: p, encontrado: !!plateToDevice[p],
+      geotabName: plateToDevice[p]?.name || '—',
+      geotabLicensePlate: plateToDevice[p]?.licensePlate || '—'
+    })));
+    console.log('Devices Geotab (primeros 20):', devices.slice(0,20).map(d => ({
+      name: d.name, licensePlate: d.licensePlate,
+      nameNorm: normPlate(d.name), licNorm: normPlate(d.licensePlate)
+    })));
+
+    // 2. Solo dispositivos que están en el CSV
+    const targetDevices = [...new Set(
+      [...csvPlates].map(p => plateToDevice[p]).filter(Boolean)
+    )];
 
     if (targetDevices.length === 0) {
-      showError('No se encontraron vehículos en Geotab que coincidan con las matrículas del CSV.');
+      const csvList = [...csvPlates].join(', ');
+      const geotabRows = devices.slice(0,25).map(d =>
+        `<tr><td style="padding:2px 10px;border-bottom:1px solid #eee">${d.name}</td>` +
+        `<td style="padding:2px 10px;border-bottom:1px solid #eee">${d.licensePlate||'—'}</td>` +
+        `<td style="padding:2px 10px;border-bottom:1px solid #eee;color:#888">${normPlate(d.name)}</td></tr>`
+      ).join('');
+      showError(
+        '<strong>⚠️ Sin coincidencias entre el CSV y Geotab.</strong><br><br>' +
+        '<b>Matrículas CSV normalizadas:</b><br>' +
+        '<code style="background:#f5f5f5;padding:4px 8px;border-radius:4px;display:inline-block;margin:4px 0;font-size:11px;">' + csvList + '</code><br><br>' +
+        '<b>Primeros 25 dispositivos Geotab:</b><br>' +
+        '<table style="font-size:11px;border-collapse:collapse;margin-top:4px;background:#fff;border:1px solid #eee;border-radius:4px;">' +
+        '<tr style="background:#f0f0f0;font-weight:bold;">' +
+        '<td style="padding:4px 10px;">Nombre</td><td style="padding:4px 10px;">Matrícula</td><td style="padding:4px 10px;">Nombre normalizado</td></tr>' +
+        geotabRows + '</table><br>' +
+        '<em style="font-size:11px;color:#888">Abre F12 → Consola para ver el diagnóstico completo.</em>'
+      );
       return;
     }
 
+    // 3. Obtener trips del período completo del CSV
+    // Período CSV: detectar min/max fecha
     const allDates = csvTrips.map(t => t.reqTime).filter(Boolean);
     const minDate = new Date(Math.min(...allDates));
     const maxDate = new Date(Math.max(...allDates));
@@ -255,77 +292,88 @@ async function runComparison() {
     const fromDate = minDate.toISOString();
     const toDate   = maxDate.toISOString();
 
+    updateLoading(`Descargando trips de Geotab (${targetDevices.length} vehículos, período ${fmtDateShort(minDate)}–${fmtDateShort(maxDate)})…`);
+
+    // Descargar trips por lotes de vehículos para no saturar la API
     let allTrips = [];
     for (let i = 0; i < targetDevices.length; i++) {
       const dev = targetDevices[i];
-      updateLoading(`Descargando viajes… vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
+      updateLoading(`Descargando trips… vehículo ${i+1}/${targetDevices.length}: ${dev.licensePlate||dev.name}`);
       try {
         const trips = await callApi('Get', {
           typeName: 'Trip',
-          search: { fromDate, toDate, deviceSearch: { id: dev.id } },
+          search: {
+            fromDate, toDate,
+            deviceSearch: { id: dev.id }
+          },
           resultsLimit: 50000
         });
-        const stops=await getStopEvents(dev.id,fromDate,toDate);
-        trips.forEach(t=>{
-          t._device=dev;
-          const ts=new Date(t.start||t.startTime).getTime();
-          const te=new Date(t.stop||t.stopTime).getTime();
-          t._stops=stops.filter(s=>{
-            const st=new Date(s.activeFrom).getTime();
-            return st>=ts && st<=te;
-          });
-        });
-        allTrips=allTrips.concat(trips);
+        trips.forEach(t => { t._device = dev; });
+        allTrips = allTrips.concat(trips);
       } catch(e) {
         console.warn('Error en vehículo', dev.id, e);
       }
     }
 
-    updateLoading('Calculando relaciones 1 a N (Geotab -> APP)...');
+    updateLoading(`${allTrips.length.toLocaleString('es')} trips descargados. Comparando…`);
 
-    const geotabFiltered = allTrips.filter(t => (t.distance || 0) / 1000 >= minDist);
+    // 4. Filtrar trips de Geotab: distancia > minDist
+    const geotabFiltered = allTrips.filter(t => {
+      const dist = (t.distance || 0) / 1000; // metros → km
+      return dist >= minDist;
+    });
+
+    // 5. Cruzar: para cada trip de Geotab, buscar match en CSV
     const tolMs = tolerance * 60 * 1000;
-    
     const enriched = geotabFiltered.map(t => {
       const dev = t._device;
-      const plate = normPlate(dev.name); 
+      const plate = normPlate(dev.name); // Buscamos por nombre
       const gStart = new Date(t.start || t.startTime);
       const gStop  = new Date(t.stop  || t.stopTime);
       const gDist  = (t.distance || 0) / 1000;
 
-      let geotabDriverName = "Sin conductor asignado";
-      if (t.driver && t.driver.id && t.driver.id !== "UnknownDriverId" && t.driver.id !== "NoDriverId") {
+      let geotabDriverName = "Desconocido";
+      if (t.driver && t.driver.id && t.driver.id !== "UnknownDriverId") {
         geotabDriverName = userMap[t.driver.id] || t.driver.id;
       }
 
-      // ── NUEVO: RELACIÓN 1 a N ──
-      // Buscamos TODOS los viajes del CSV que caigan dentro de este viaje continuo de Geotab
-      const matchedCSVTrips = csvTrips.filter(c => {
+      // Buscar en CSV trips del mismo vehículo donde el viaje de Geotab esté COMPLETO
+      // dentro del tiempo del viaje de la APP (± tolerancia)
+      const match = csvTrips.find(c => {
         if (c.plate !== plate) return false;
-        const maxStart = Math.max(gStart.getTime() - tolMs, c.reqTime.getTime());
-        const minEnd = Math.min(gStop.getTime() + tolMs, c.arrTime.getTime());
-        return minEnd > maxStart;
+        if (!c.reqTime || !c.arrTime) return false;
+        
+        // El viaje de Geotab empieza en o después del inicio de la APP (considerando tolerancia extra)
+        const isAfterStart = gStart >= new Date(c.reqTime.getTime() - tolMs);
+        // El viaje de Geotab acaba en o antes del final de la APP (considerando tolerancia extra)
+        const isBeforeEnd = gStop <= new Date(c.arrTime.getTime() + tolMs);
+        
+        return isAfterStart && isBeforeEnd;
       });
 
-      const csvCount = matchedCSVTrips.length;
-      const csvTotalDist = matchedCSVTrips.reduce((sum, c) => sum + (c.dist || 0), 0);
-
       return {
-        gId: t.id, gStart, gStop,
+        // Geotab
+        gId: t.id,
+        gStart, gStop,
         gDist: +gDist.toFixed(2),
-        gDur: Math.round((gStop - gStart) / 60000),
-        plate, plateOrig: dev.name,
-        deviceId: dev.id, deviceName: dev.name,
+        gDur: Math.round((gStop - gStart) / 60000), // minutos
+        plate,
+        plateOrig: dev.name,
+        deviceId: dev.id,
+        deviceName: dev.name,
         geotabDriverName,
-        matched: csvCount > 0, // Se considera "registrado" si tiene al menos 1 viaje APP dentro
-        csvCount: csvCount,
-        csvTotalDist: +csvTotalDist.toFixed(2),
-        discrepancyDist:+(gDist-csvTotalDist).toFixed(2),stopsCount:(t._stops||[]).length
+        // CSV match
+        matched: !!match,
+        csvUUID: match?.uuid || null,
+        csvConductor: match?.conductor || null,
+        csvDist: match?.dist || null,
+        csvProduct: match?.product || null,
       };
     });
 
     geotabTrips = enriched;
     results = enriched;
+
     renderResults(tolerance, minDist, fromDate, toDate);
 
   } catch(err) {
@@ -336,22 +384,24 @@ async function runComparison() {
 
 // ── RENDER PRINCIPAL ─────────────────────────────────────
 function renderResults(tolerance, minDist, fromDate, toDate) {
-  const show = document.getElementById('filterShow').value;
-  const filterPl = document.getElementById('filterVehicle').value;
+  const show      = document.getElementById('filterShow').value;
+  const filterPl  = document.getElementById('filterVehicle').value;
 
   let data = results;
   if (filterPl !== 'all') data = data.filter(r => r.plate === normPlate(filterPl));
 
-  const totalGeotab = data.length;
-  const totalMatched = data.filter(r => r.matched).length;
-  const totalUnmatched = totalGeotab - totalMatched;
-  const coverage = totalGeotab > 0 ? (totalMatched / totalGeotab * 100) : 0;
+  const totalGeotab   = data.length;
+  const totalMatched  = data.filter(r => r.matched).length;
+  const totalUnmatched= totalGeotab - totalMatched;
+  const coverage      = totalGeotab > 0 ? (totalMatched / totalGeotab * 100) : 0;
 
+  // Agrupar por vehículo
   const byPlate = {};
   data.forEach(r => {
     if (!byPlate[r.plate]) {
       byPlate[r.plate] = {
-        plate: r.plate, plateOrig: r.plateOrig, deviceName: r.deviceName, deviceId: r.deviceId,
+        plate: r.plate, plateOrig: r.plateOrig,
+        deviceName: r.deviceName, deviceId: r.deviceId,
         total: 0, matched: 0, unmatched: 0, trips: []
       };
     }
@@ -364,16 +414,18 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
   let vehicles = Object.values(byPlate);
   vehicles.sort((a,b) => (a[sortCol] > b[sortCol] ? 1 : -1) * sortDir);
 
+  const html = [];
+
+  // Métricas
   const coveragePct = coverage.toFixed(1);
   const coverageClass = coverage >= 85 ? 'm-ok' : coverage >= 60 ? 'm-warn' : 'm-danger';
 
-  const html = [];
   html.push(`
   <div class="info-bar">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
     Período: ${fmtDateShort(new Date(fromDate))} – ${fmtDateShort(new Date(toDate))} ·
     Tolerancia ±${tolerance} min · Distancia mínima ≥ ${minDist} km ·
-    ${csvPlates.size} vehículos en CSV · ${vehicles.length} vehículos en Geotab
+    ${csvPlates.size} vehículos en CSV · ${vehicles.length} vehículos con trips en Geotab
   </div>
   <div class="metrics">
     <div class="metric m-accent">
@@ -396,9 +448,24 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
       <div class="metric-value">${coveragePct}%</div>
       <div class="metric-sub">trips Geotab cubiertos</div>
     </div>
+    <div class="metric">
+      <div class="metric-label">Vehículos analizados</div>
+      <div class="metric-value">${vehicles.length}</div>
+      <div class="metric-sub">${totalUnmatched > 0 ? vehicles.filter(v=>v.unmatched>0).length + ' con gaps' : 'sin gaps'}</div>
+    </div>
+  </div>
+  <div class="coverage-bar-wrap">
+    <div class="coverage-label">
+      <span>Cobertura de la APP</span>
+      <span>${coveragePct}%</span>
+    </div>
+    <div class="coverage-bar">
+      <div class="coverage-fill" style="width:${coveragePct}%;background:${coverage>=85?'var(--ok)':coverage>=60?'var(--warn)':'var(--danger)'};"></div>
+    </div>
   </div>
   `);
 
+  // Tabla por vehículo
   html.push(`
   <div class="table-card">
     <div class="table-toolbar">
@@ -410,12 +477,13 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
     <div class="table-wrap">
     <table>
       <thead><tr>
-        <th onclick="resortBy('plateOrig')" class="${sortCol==='plateOrig'?'sorted':''}">Matrícula</th>
+        <th onclick="resortBy('plate')" class="${sortCol==='plate'?'sorted':''}">Matrícula</th>
         <th onclick="resortBy('deviceName')" class="${sortCol==='deviceName'?'sorted':''}">Nombre Geotab</th>
         <th onclick="resortBy('total')" class="${sortCol==='total'?'sorted':''}">Trips Geotab</th>
         <th onclick="resortBy('matched')" class="${sortCol==='matched'?'sorted':''}">En APP</th>
         <th onclick="resortBy('unmatched')" class="${sortCol==='unmatched'?'sorted':''}">No en APP ↓</th>
         <th onclick="resortBy('_cov')" class="${sortCol==='_cov'?'sorted':''}">Cobertura</th>
+        <th>Nivel</th>
         <th></th>
       </tr></thead>
       <tbody id="vehicleTableBody">
@@ -423,14 +491,19 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
 
   vehicles.forEach((v, vi) => {
     const cov = v.total > 0 ? (v.matched/v.total*100) : 0;
+    const covLabel = cov.toFixed(0) + '%';
+    const pillClass = cov >= 85 ? 'pill-ok' : cov >= 60 ? 'pill-warn' : 'pill-danger';
+    const nivel = cov >= 85 ? 'Correcto' : cov >= 60 ? 'Revisar' : 'Crítico';
     const barColor = cov >= 85 ? 'var(--ok)' : cov >= 60 ? 'var(--warn)' : 'var(--danger)';
+
+    // Trips a mostrar en el detalle
     const showAll = document.getElementById('filterShow').value === 'all';
     const detailTrips = showAll ? v.trips : v.trips.filter(t => !t.matched);
     detailTrips.sort((a,b) => a.gStart - b.gStart);
 
     html.push(`
-    <tr class="vehicle-row" onclick="toggleExpand('exp-${vi}')">
-      <td><strong>${v.plateOrig}</strong></td>
+    <tr class="vehicle-row" onclick="toggleExpand('exp-${vi}', this)">
+      <td><strong>${v.plateOrig || v.plate}</strong></td>
       <td style="color:var(--ink-mid)">${v.deviceName}</td>
       <td>${v.total}</td>
       <td style="color:var(--ok);font-weight:600;">${v.matched}</td>
@@ -438,40 +511,43 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
       <td>
         <div class="mini-bar">
           <div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${cov.toFixed(0)}%;background:${barColor};"></div></div>
-          <span>${cov.toFixed(0)}%</span>
+          <span>${covLabel}</span>
         </div>
       </td>
-      <td style="color:var(--ink-light);font-size:12px;cursor:pointer;">${v.unmatched > 0 ? '▼ ver detalle' : '—'}</td>
+      <td><span class="pill ${pillClass}">${nivel}</span></td>
+      <td style="color:var(--ink-light);font-size:12px;">${v.unmatched > 0 ? '▼ ver detalle' : '—'}</td>
     </tr>
     `);
 
-    html.push(`<tr><td colspan="7" style="padding:0;">`);
+    // Sección expandible
+    html.push(`<tr><td colspan="8" style="padding:0;">`);
     html.push(`<div class="expand-section" id="exp-${vi}">`);
     if (detailTrips.length === 0) {
       html.push(`<div class="trips-sub"><p style="font-size:12px;color:var(--ok);">✓ Todos los trips están registrados en la APP.</p></div>`);
     } else {
-      html.push(`<div class="trips-sub"><div class="trip-list">`);
+      html.push(`<div class="trips-sub">`);
+      html.push(`<div class="trips-sub-title">${showAll ? 'Todos los trips' : 'Trips NO registrados en APP'} · ${detailTrips.length} viajes</div>`);
+      html.push(`<div class="trip-list">`);
       detailTrips.forEach(t => {
         const mapUrl = buildMapUrl(t);
-        const matchBadge = t.matched 
-          ? `<span class="pill pill-ok">Contiene ${t.csvCount} viaje(s) APP</span>` 
-          : `<span class="pill pill-danger">Sin registrar (Completamente vacío)</span>`;
-
+        const matchBadge = t.matched
+          ? `<span class="pill pill-ok" style="font-size:10px;">En APP</span>`
+          : `<span class="pill pill-danger" style="font-size:10px;">Sin registrar</span>`;
         html.push(`
-        <div class="trip-item ${(!t.matched&&t.stopsCount>0)?'trip-suspect':''}">
-          <span class="trip-date">${fmtDateShort(t.gStart)}</span>
+        <div class="trip-item">
+          <span class="trip-date">${fmtDate(t.gStart)}</span>
           <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
-          <span class="trip-dist">
-             <strong>${t.gDist} km</strong> (Geotab)
-             ${t.matched ? `<br><small style="color:var(--ink-light)">${t.csvTotalDist} km (APP)</small>` : ''}
-          </span>
-          <span class="trip-route" title="Conductor: ${t.geotabDriverName}">
-            <strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small>
+          <span class="trip-dist">${t.gDist} km</span>
+          <span class="trip-dur">${t.gDur} min</span>
+          <span class="trip-route" title="Conductor Geotab: ${t.geotabDriverName}">
+            ${t.plateOrig}<br><small style="color:var(--ink-light);font-size:10px;">${t.geotabDriverName}</small>
           </span>
           <div class="trip-actions">
             ${matchBadge}
-            ${t.stopsCount>0?`<div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>`:''}
-            <a class="trip-link" href="${mapUrl}" target="_blank">Ver Historial</a>
+            <a class="trip-link" href="${mapUrl}" target="_blank">
+              <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Historial
+            </a>
           </div>
         </div>`);
       });
@@ -480,31 +556,44 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
     html.push(`</div></td></tr>`);
   });
 
-  html.push(`</tbody></table></div></div>`);
+  html.push(`</tbody></table></div>`);
+  html.push(`<div class="table-footer">
+    <span>${vehicles.length} vehículos · ${totalUnmatched} trips sin registrar</span>
+    <span style="color:var(--ink-mid);font-size:11px;">Haz clic en una fila para expandir el detalle</span>
+  </div>`);
+  html.push(`</div>`);
+
   document.getElementById('resultsArea').innerHTML = html.join('');
   document.getElementById('btnExport').style.display = 'inline-flex';
 }
 
-function toggleExpand(id) {
+// ── EXPAND/COLLAPSE ──────────────────────────────────────
+function toggleExpand(id, row) {
   const el = document.getElementById(id);
   if (!el) return;
   const isOpen = el.classList.contains('open');
+  // Cerrar todos
   document.querySelectorAll('.expand-section.open').forEach(e => e.classList.remove('open'));
   if (!isOpen) el.classList.add('open');
 }
 
+// ── FILTRO BÚSQUEDA ──────────────────────────────────────
 function filterTable() {
   const q = document.getElementById('searchInput')?.value.toLowerCase() || '';
   document.querySelectorAll('.vehicle-row').forEach(row => {
     const text = row.textContent.toLowerCase();
     row.style.display = text.includes(q) ? '' : 'none';
-    if (row.nextElementSibling) row.nextElementSibling.style.display = text.includes(q) ? '' : 'none';
+    // También ocultar la fila expand siguiente
+    const next = row.nextElementSibling;
+    if (next) next.style.display = text.includes(q) ? '' : 'none';
   });
 }
 
+// ── REORDENAR ────────────────────────────────────────────
 function resortBy(col) {
   if (sortCol === col) sortDir *= -1;
   else { sortCol = col; sortDir = -1; }
+  // Reconstruir con mismos params
   renderResults(
     parseInt(document.getElementById('tolerance').value)||5,
     parseFloat(document.getElementById('minDist').value)||0.5,
@@ -513,38 +602,73 @@ function resortBy(col) {
   );
 }
 
+// ── ENLACE AL MAPA DE GEOTAB ──────────────────────────────
 function buildMapUrl(t) {
-  const from = t.gStart.toISOString();
-  const to   = t.gStop.toISOString();
-  return `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:${t.deviceId}),fromDate:${from},toDate:${to}`;
+  // Enlace a la vista de historial del dispositivo en MyGeotab
+  const from = encodeURIComponent(t.gStart.toISOString());
+  const to   = encodeURIComponent(t.gStop.toISOString());
+  return `https://my.geotab.com/blun/#tripsHistory,${t.deviceId},${from},${to}`;
 }
 
+// ── EXPORT EXCEL ─────────────────────────────────────────
 function exportExcel() {
   const unmatched = results.filter(r => !r.matched);
   const rows = [
-    ['Matrícula', 'Nombre Geotab', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia Geotab (km)', 'Viajes en APP', 'Distancia APP (km)', 'Enlace Verificación MyGeotab'],
+    ['Matrícula','Nombre Geotab','Conductor Geotab','Fecha','Hora inicio','Hora fin','Duración (min)','Distancia (km)','Enlace Historial'],
     ...unmatched.map(r => [
       r.plateOrig, r.deviceName, r.geotabDriverName,
       fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
-      r.gDur, r.gDist, r.csvCount, r.csvTotalDist, buildMapUrl(r)
+      r.gDur, r.gDist,
+      buildMapUrl(r)
+    ])
+  ];
+
+  // Hoja resumen por vehículo
+  const byPlate = {};
+  results.forEach(r => {
+    if (!byPlate[r.plate]) byPlate[r.plate] = { plateOrig:r.plateOrig, deviceName:r.deviceName, total:0, matched:0, unmatched:0 };
+    byPlate[r.plate].total++;
+    if (r.matched) byPlate[r.plate].matched++;
+    else byPlate[r.plate].unmatched++;
+  });
+  const summaryRows = [
+    ['Matrícula','Nombre Geotab','Trips Geotab','En APP','No en APP','Cobertura %'],
+    ...Object.values(byPlate).map(v => [
+      v.plateOrig, v.deviceName, v.total, v.matched, v.unmatched,
+      +(v.total>0?(v.matched/v.total*100):0).toFixed(1)
     ])
   ];
 
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet(rows);
-  ws1['!cols'] = [12, 15, 25, 12, 10, 10, 15, 18, 15, 18, 80].map(w => ({wch: w}));
+  ws1['!cols'] = [12,20,12,10,10,10,12,50].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb, ws1, 'Trips sin registrar');
-  
+
+  const ws2 = XLSX.utils.aoa_to_sheet(summaryRows);
+  ws2['!cols'] = [12,20,12,12,12,12].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws2, 'Resumen por vehículo');
+
   const today = new Date().toISOString().slice(0,10);
   XLSX.writeFile(wb, `vtc_gaps_${today}.xlsx`);
 }
 
-function fmtDate(d) { return d ? d.toLocaleDateString('es-ES') : ''; }
-function fmtDateShort(d) { return d ? d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit'}) : ''; }
-function fmtTime(d) { return d ? d.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'}) : ''; }
+// ── UTILS ─────────────────────────────────────────────────
+function fmtDate(d) {
+  if (!d) return '';
+  return d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function fmtTime(d) {
+  if (!d) return '';
+  return d.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'});
+}
+function fmtDateShort(d) {
+  if (!d) return '';
+  return d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit'});
+}
 
 function showLoading(msg) {
-  document.getElementById('resultsArea').innerHTML = `<div class="state"><p class="progress-msg">${msg}</p></div>`;
+  document.getElementById('resultsArea').innerHTML =
+    `<div class="state"><div class="spinner"></div><p class="progress-msg">${msg}</p></div>`;
   document.getElementById('btnExport').style.display = 'none';
 }
 function updateLoading(msg) {
@@ -552,7 +676,8 @@ function updateLoading(msg) {
   if (p) p.textContent = msg;
 }
 function showError(msg) {
-  document.getElementById('resultsArea').innerHTML = `<div class="state"><p style="color:var(--danger)">${msg}</p></div>`;
+  document.getElementById('resultsArea').innerHTML =
+    `<div class="state"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p>${msg}</p></div>`;
 }
 </script>
 </body>
