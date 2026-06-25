@@ -286,7 +286,8 @@ async function runComparison() {
       }
     }
 
-    const geotabFiltered = allTrips.filter(t => ((t.distance || 0) / 1000) >= minDist);
+    // CÓDIGO CORREGIDO
+const geotabFiltered = allTrips.filter(t => (t.distance || 0) >= minDist);
     const tolMs = tolerance * 60 * 1000;
 
     // LÓGICA DE SOLAPAMIENTO DE INTERVALOS (Intersección Real)
@@ -295,7 +296,8 @@ async function runComparison() {
       const plate = normPlate(dev.name) || normPlate(dev.licensePlate);
       const gStart = new Date(t.start || t.startTime);
       const gStop  = new Date(t.stop  || t.stopTime);
-      const gDist  = (t.distance || 0) / 1000;
+      // CÓDIGO CORREGIDO
+const gDist = t.distance || 0;
 
       let geotabDriverName = "Sin Conductor";
       if (t.driver && t.driver.id && t.driver.id !== "UnknownDriverId") {
