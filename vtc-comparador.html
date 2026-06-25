@@ -117,7 +117,8 @@ geotab.addin.blunvtccomparador = function () {
         if(session) {
           serverStr = session.server || 'my.geotab.com';
           databaseStr = session.database || 'Desconocida';
-          document.getElementById('dbNameBadge').textContent = databaseStr;
+          const dbBadge = document.getElementById('dbNameBadge');
+          if (dbBadge) dbBadge.textContent = databaseStr;
         }
         callback();      
       });
@@ -234,16 +235,19 @@ async function runComparison() {
       userMap[u.id] = (u.firstName && u.lastName) ? (u.firstName + ' ' + u.lastName) : (u.name || 'Desconocido');
     });
 
-    const plateToDevice = {}; 
+    // COINCIDENCIA PARCIAL INTELIGENTE: Filtramos dispositivos cuyo nombre contenga alguna matrícula del CSV
+    const targetDevices = [];
     devices.forEach(d => {
-      const np = normPlate(d.name);
-      if (np) plateToDevice[np] = d;
+      const normDevName = normPlate(d.name);
+      const matchingCsvPlate = [...csvPlates].find(p => normDevName.includes(p));
+      if (matchingCsvPlate) {
+        d._matchedCsvPlate = matchingCsvPlate; // Vinculamos de forma estricta la matrícula limpia encontrada
+        targetDevices.push(d);
+      }
     });
 
-    const targetDevices = [...csvPlates].map(p => plateToDevice[p]).filter(Boolean);
-
     if (targetDevices.length === 0) {
-      showError('No se encontraron vehículos en Geotab que coincidan con las matrículas del CSV.');
+      showError('No se encontraron vehículos en Geotab que coincidan con las ' + csvPlates.size + ' matrículas del CSV. Revisa si los nombres en Geotab contienen las matrículas.');
       return;
     }
 
@@ -272,10 +276,10 @@ async function runComparison() {
           search: {
             fromDate,
             toDate,
-            ruleSearch: { id: "aqL2ahmjVl0ev8BRJxP6IqA" }, // Regla de paradas rápidas
+            ruleSearch: { id: "aqL2ahmjVl0ev8BRJxP6IqA" }, 
             deviceSearch: { id: dev.id }
           }
-        }).catch(() => []); // Prevenir error si la regla no existe o falla
+        }).catch(() => []); 
 
         trips.forEach(t => { 
           t._device = dev;
@@ -300,7 +304,7 @@ async function runComparison() {
     
     const enriched = geotabFiltered.map(t => {
       const dev = t._device;
-      const plate = normPlate(dev.name); 
+      const plate = dev._matchedCsvPlate; // Usamos la correspondencia limpia del CSV
       const gStart = new Date(t.start || t.startTime);
       const gStop  = new Date(t.stop  || t.stopTime);
       const gDist  = (t.distance || 0) / 1000;
@@ -310,7 +314,6 @@ async function runComparison() {
         geotabDriverName = userMap[t.driver.id] || t.driver.id;
       }
 
-      // Solapamiento 1 a N
       const matchedCSVTrips = csvTrips.filter(c => {
         if (c.plate !== plate) return false;
         const maxStart = Math.max(gStart.getTime() - tolMs, c.reqTime.getTime());
@@ -332,7 +335,7 @@ async function runComparison() {
         csvCount: csvCount,
         csvTotalDist: +csvTotalDist.toFixed(2),
         discrepancyDist: +(gDist - csvTotalDist).toFixed(2),
-        stopsCount: t._stops ? t._stops.length : 0 // Conteo de paradas rápidas
+        stopsCount: t._stops ? t._stops.length : 0 
       };
     });
 
