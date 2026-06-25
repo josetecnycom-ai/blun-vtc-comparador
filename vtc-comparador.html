@@ -6,6 +6,19 @@
   <title>Comparador de Viajes VTC</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="css/vtc-comparador.css">
+  <style>
+    .stop-badge { 
+      display: inline-block; 
+      background: #fff3cd; 
+      color: #856404; 
+      padding: 3px 8px; 
+      border-radius: 4px; 
+      font-size: 11px; 
+      margin-top: 4px; 
+      border: 1px solid #ffeeba;
+      font-weight: 600;
+    }
+  </style>
 </head>
 <body style="margin: 0; padding: 0; width: 100%; height: 100%; background-color: transparent !important; color: var(--ink);">
 
@@ -69,7 +82,7 @@
     <div id="resultsArea">
       <div class="state">
         <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#ccc" stroke-width="2"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/></svg>
-        <p>Carga el CSV de la APP y pulsa <strong>Comparar</strong> para detectar viajes no registrados.</p>
+        <p>Carga el CSV de la APP y pulsa <strong>Comparar</strong> para cruzar datos con Geotab.</p>
       </div>
     </div>
   </div>
@@ -246,21 +259,41 @@ async function runComparison() {
     let allTrips = [];
     for (let i = 0; i < targetDevices.length; i++) {
       const dev = targetDevices[i];
-      updateLoading(`Descargando viajes… vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
+      updateLoading(`Descargando viajes y paradas… vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
       try {
         const trips = await callApi('Get', {
           typeName: 'Trip',
           search: { fromDate, toDate, deviceSearch: { id: dev.id } },
           resultsLimit: 50000
         });
-        trips.forEach(t => { t._device = dev; });
+
+        const stops = await callApi('Get', {
+          typeName: 'ExceptionEvent',
+          search: {
+            fromDate,
+            toDate,
+            ruleSearch: { id: "aqL2ahmjVl0ev8BRJxP6IqA" }, // Regla de paradas rápidas
+            deviceSearch: { id: dev.id }
+          }
+        }).catch(() => []); // Prevenir error si la regla no existe o falla
+
+        trips.forEach(t => { 
+          t._device = dev;
+          const tStart = new Date(t.start || t.startTime).getTime();
+          const tStop = new Date(t.stop || t.stopTime).getTime();
+          t._stops = stops.filter(s => {
+            const sTime = new Date(s.activeFrom).getTime();
+            return sTime >= tStart && sTime <= tStop;
+          });
+        });
+
         allTrips = allTrips.concat(trips);
       } catch(e) {
         console.warn('Error en vehículo', dev.id, e);
       }
     }
 
-    updateLoading('Calculando relaciones 1 a N (Geotab -> APP)...');
+    updateLoading('Calculando relaciones de viaje y analizando excepciones...');
 
     const geotabFiltered = allTrips.filter(t => (t.distance || 0) / 1000 >= minDist);
     const tolMs = tolerance * 60 * 1000;
@@ -277,8 +310,7 @@ async function runComparison() {
         geotabDriverName = userMap[t.driver.id] || t.driver.id;
       }
 
-      // ── NUEVO: RELACIÓN 1 a N ──
-      // Buscamos TODOS los viajes del CSV que caigan dentro de este viaje continuo de Geotab
+      // Solapamiento 1 a N
       const matchedCSVTrips = csvTrips.filter(c => {
         if (c.plate !== plate) return false;
         const maxStart = Math.max(gStart.getTime() - tolMs, c.reqTime.getTime());
@@ -296,10 +328,11 @@ async function runComparison() {
         plate, plateOrig: dev.name,
         deviceId: dev.id, deviceName: dev.name,
         geotabDriverName,
-        matched: csvCount > 0, // Se considera "registrado" si tiene al menos 1 viaje APP dentro
+        matched: csvCount > 0, 
         csvCount: csvCount,
         csvTotalDist: +csvTotalDist.toFixed(2),
-        discrepancyDist: +(gDist - csvTotalDist).toFixed(2) // Diferencia de KMs
+        discrepancyDist: +(gDist - csvTotalDist).toFixed(2),
+        stopsCount: t._stops ? t._stops.length : 0 // Conteo de paradas rápidas
       };
     });
 
@@ -434,7 +467,11 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
         const mapUrl = buildMapUrl(t);
         const matchBadge = t.matched 
           ? `<span class="pill pill-ok">Contiene ${t.csvCount} viaje(s) APP</span>` 
-          : `<span class="pill pill-danger">Sin registrar (Completamente vacío)</span>`;
+          : `<span class="pill pill-danger">Sin registrar (Vacío)</span>`;
+
+        const stopBadgeHtml = t.stopsCount > 0 
+          ? `<br><div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>` 
+          : '';
 
         html.push(`
         <div class="trip-item">
@@ -447,9 +484,10 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
           <span class="trip-route" title="Conductor: ${t.geotabDriverName}">
             <strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small>
           </span>
-          <div class="trip-actions">
+          <div class="trip-actions" style="flex-direction: column; align-items: flex-end; gap: 4px;">
             ${matchBadge}
-            <a class="trip-link" href="${mapUrl}" target="_blank">Ver Historial</a>
+            ${stopBadgeHtml}
+            <a class="trip-link" href="${mapUrl}" target="_blank" style="margin-top:4px;">Ver Historial</a>
           </div>
         </div>`);
       });
@@ -500,17 +538,17 @@ function buildMapUrl(t) {
 function exportExcel() {
   const unmatched = results.filter(r => !r.matched);
   const rows = [
-    ['Matrícula', 'Nombre Geotab', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia Geotab (km)', 'Viajes en APP', 'Distancia APP (km)', 'Enlace Verificación MyGeotab'],
+    ['Matrícula', 'Nombre Geotab', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia Geotab (km)', 'Viajes en APP', 'Distancia APP (km)', 'Paradas Rápidas', 'Enlace Verificación MyGeotab'],
     ...unmatched.map(r => [
       r.plateOrig, r.deviceName, r.geotabDriverName,
       fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
-      r.gDur, r.gDist, r.csvCount, r.csvTotalDist, buildMapUrl(r)
+      r.gDur, r.gDist, r.csvCount, r.csvTotalDist, r.stopsCount, buildMapUrl(r)
     ])
   ];
 
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet(rows);
-  ws1['!cols'] = [12, 15, 25, 12, 10, 10, 15, 18, 15, 18, 80].map(w => ({wch: w}));
+  ws1['!cols'] = [12, 15, 25, 12, 10, 10, 15, 18, 15, 18, 15, 80].map(w => ({wch: w}));
   XLSX.utils.book_append_sheet(wb, ws1, 'Trips sin registrar');
   
   const today = new Date().toISOString().slice(0,10);
