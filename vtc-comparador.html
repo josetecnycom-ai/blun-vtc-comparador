@@ -18,6 +18,25 @@
       border: 1px solid #ffeeba;
       font-weight: 600;
     }
+    .diagnostic-box {
+      text-align: left; 
+      background: #f8d7da; 
+      color: #721c24; 
+      padding: 15px; 
+      border-radius: 6px; 
+      margin-top: 15px; 
+      font-size: 13px;
+      border: 1px solid #f5c6cb;
+    }
+    .diagnostic-code {
+      background: rgba(0,0,0,0.05); 
+      padding: 8px; 
+      display: block; 
+      border-radius: 4px; 
+      margin-top: 5px; 
+      font-family: monospace;
+      color: #333;
+    }
   </style>
 </head>
 <body style="margin: 0; padding: 0; width: 100%; height: 100%; background-color: transparent !important; color: var(--ink);">
@@ -60,13 +79,13 @@
       </div>
       <div class="setting-group">
         <label>Filtrar vehículo</label>
-        <select id="filterVehicle">
+        <select id="filterVehicle" onchange="applyFilters()">
           <option value="all">Todos</option>
         </select>
       </div>
       <div class="setting-group">
         <label>Mostrar en detalle</label>
-        <select id="filterShow">
+        <select id="filterShow" onchange="applyFilters()">
           <option value="unmatched">Solo no registrados en APP</option>
           <option value="all">Todos los trips de Geotab</option>
         </select>
@@ -99,6 +118,11 @@ let results = [];
 let csvPlates = new Set();  
 let sortCol = 'unmatched';
 let sortDir = -1;
+
+// Persistencia para filtros rápidos sin re-descargar de la API
+let globalTargetDevices = [];
+let globalFromDate = '';
+let globalToDate = '';
 
 // ── INIT GEOTAB ──────────────────────────────────────────
 if (typeof geotab === 'undefined') {
@@ -224,7 +248,7 @@ async function runComparison() {
   const tolerance = parseInt(document.getElementById('tolerance').value) || 5;
   const minDist   = parseFloat(document.getElementById('minDist').value) || 0.5;
 
-  showLoading('Obteniendo vehículos de Geotab…');
+  showLoading('Obteniendo flota de Geotab…');
 
   try {
     const devices = await callApi('Get', { typeName: 'Device', resultsLimit: 2000 });
@@ -235,21 +259,37 @@ async function runComparison() {
       userMap[u.id] = (u.firstName && u.lastName) ? (u.firstName + ' ' + u.lastName) : (u.name || 'Desconocido');
     });
 
-    // COINCIDENCIA PARCIAL INTELIGENTE: Filtramos dispositivos cuyo nombre contenga alguna matrícula del CSV
+    // MEJORA: Coincidencia inteligente combinando Nombre (d.name) Y Matrícula oficial (d.licensePlate)
     const targetDevices = [];
     devices.forEach(d => {
-      const normDevName = normPlate(d.name);
-      const matchingCsvPlate = [...csvPlates].find(p => normDevName.includes(p));
+      const normDevName = normPlate(d.name || '');
+      const normDevPlate = normPlate(d.licensePlate || '');
+      
+      const matchingCsvPlate = [...csvPlates].find(p => normDevName.includes(p) || normDevPlate.includes(p));
       if (matchingCsvPlate) {
-        d._matchedCsvPlate = matchingCsvPlate; // Vinculamos de forma estricta la matrícula limpia encontrada
+        d._matchedCsvPlate = matchingCsvPlate; 
         targetDevices.push(d);
       }
     });
 
+    // CONTROL DE DIAGNÓSTICO EN PANTALLA SI HAY 0 EMPAREJAMIENTOS
     if (targetDevices.length === 0) {
-      showError('No se encontraron vehículos en Geotab que coincidan con las ' + csvPlates.size + ' matrículas del CSV. Revisa si los nombres en Geotab contienen las matrículas.');
+      let sampleCsv = [...csvPlates].slice(0, 5).join(', ');
+      let sampleGeo = devices.slice(0, 5).map(d => `"${d.name}" (Matrícula campo oficial: ${d.licensePlate || 'Vacía'})`).join('<br>• ');
+      
+      document.getElementById('resultsArea').innerHTML = `
+        <div class="diagnostic-box">
+          <h3 style="margin-top:0;">⚠️ Alerta de Nomenclatura (0 vehículos emparejados)</h3>
+          <p>El Add-in se está ejecutando bien, pero ninguna de las <strong>${csvPlates.size}</strong> matrículas analizadas del CSV encaja con los <strong>${devices.length}</strong> vehículos de Geotab.</p>
+          <p><strong>Muestra de matrículas de tu CSV:</strong> <span class="diagnostic-code">${sampleCsv}</span></p>
+          <p><strong>Muestra de lo que lee el Add-in en Geotab:</strong> <span class="diagnostic-code">• ${sampleGeo}</span></p>
+          <p style="margin-bottom:0; font-weight:bold;">💡 Solución: Edita un coche en MyGeotab y asegúrate de que su Nombre o su campo "Matrícula" contenga los dígitos limpios del CSV (ej: 6621LYF).</p>
+        </div>`;
       return;
     }
+
+    // Guardamos en estado global para los filtros de interfaz reactivos
+    globalTargetDevices = targetDevices;
 
     const allDates = csvTrips.map(t => t.reqTime).filter(Boolean);
     const minDate = new Date(Math.min(...allDates));
@@ -257,25 +297,26 @@ async function runComparison() {
     minDate.setHours(0,0,0,0);
     maxDate.setHours(23,59,59,999);
 
-    const fromDate = minDate.toISOString();
-    const toDate   = maxDate.toISOString();
+    globalFromDate = minDate.toISOString();
+    globalToDate   = maxDate.toISOString();
 
     let allTrips = [];
     for (let i = 0; i < targetDevices.length; i++) {
       const dev = targetDevices[i];
-      updateLoading(`Descargando viajes y paradas… vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
+      updateLoading(`Descargando datos… vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
       try {
         const trips = await callApi('Get', {
           typeName: 'Trip',
-          search: { fromDate, toDate, deviceSearch: { id: dev.id } },
+          search: { fromDate: globalFromDate, toDate: globalToDate, deviceSearch: { id: dev.id } },
           resultsLimit: 50000
         });
 
+        // Captura de excepciones (paradas rápidas)
         const stops = await callApi('Get', {
           typeName: 'ExceptionEvent',
           search: {
-            fromDate,
-            toDate,
+            fromDate: globalFromDate,
+            toDate: globalToDate,
             ruleSearch: { id: "aqL2ahmjVl0ev8BRJxP6IqA" }, 
             deviceSearch: { id: dev.id }
           }
@@ -293,23 +334,23 @@ async function runComparison() {
 
         allTrips = allTrips.concat(trips);
       } catch(e) {
-        console.warn('Error en vehículo', dev.id, e);
+        console.warn('Ignorado error en dispositivo: ', dev.id, e);
       }
     }
 
-    updateLoading('Calculando relaciones de viaje y analizando excepciones...');
+    updateLoading('Procesando cruce de rutas de la flota...');
 
     const geotabFiltered = allTrips.filter(t => (t.distance || 0) / 1000 >= minDist);
     const tolMs = tolerance * 60 * 1000;
     
-    const enriched = geotabFiltered.map(t => {
+    results = geotabFiltered.map(t => {
       const dev = t._device;
-      const plate = dev._matchedCsvPlate; // Usamos la correspondencia limpia del CSV
+      const plate = dev._matchedCsvPlate; 
       const gStart = new Date(t.start || t.startTime);
       const gStop  = new Date(t.stop  || t.stopTime);
       const gDist  = (t.distance || 0) / 1000;
 
-      let geotabDriverName = "Sin conductor asignado";
+      let geotabDriverName = "Sin conductor";
       if (t.driver && t.driver.id && t.driver.id !== "UnknownDriverId" && t.driver.id !== "NoDriverId") {
         geotabDriverName = userMap[t.driver.id] || t.driver.id;
       }
@@ -339,44 +380,60 @@ async function runComparison() {
       };
     });
 
-    geotabTrips = enriched;
-    results = enriched;
-    renderResults(tolerance, minDist, fromDate, toDate);
+    renderResults(tolerance, minDist, globalFromDate, globalToDate);
 
   } catch(err) {
     console.error(err);
-    showError('Error al consultar Geotab: ' + (err?.message || String(err)));
+    showError('Error de comunicación SDK: ' + (err?.message || String(err)));
   }
 }
 
-// ── RENDER PRINCIPAL ─────────────────────────────────────
+// ── RENDER PRINCIPAL (CORREGIDO DECOUPLED) ────────────────
 function renderResults(tolerance, minDist, fromDate, toDate) {
   const show = document.getElementById('filterShow').value;
   const filterPl = document.getElementById('filterVehicle').value;
 
+  // ARQUITECTURA SÓLIDA: Inicializamos el mapa usando TODOS los coches encontrados.
+  // Así, si tienen 0 viajes, saldrán listados correctamente en vez de desaparecer.
+  const byPlate = {};
+  globalTargetDevices.forEach(dev => {
+    const p = dev._matchedCsvPlate;
+    byPlate[p] = {
+      plate: p, 
+      plateOrig: dev.name, 
+      deviceName: dev.name, 
+      deviceId: dev.id,
+      total: 0, 
+      matched: 0, 
+      unmatched: 0, 
+      trips: []
+    };
+  });
+
+  // Vinculamos los viajes mapeados
   let data = results;
   if (filterPl !== 'all') data = data.filter(r => r.plate === normPlate(filterPl));
+
+  data.forEach(r => {
+    const v = byPlate[r.plate];
+    if (v) {
+      v.total++;
+      if (r.matched) v.matched++;
+      else v.unmatched++;
+      v.trips.push(r);
+    }
+  });
 
   const totalGeotab = data.length;
   const totalMatched = data.filter(r => r.matched).length;
   const totalUnmatched = totalGeotab - totalMatched;
   const coverage = totalGeotab > 0 ? (totalMatched / totalGeotab * 100) : 0;
 
-  const byPlate = {};
-  data.forEach(r => {
-    if (!byPlate[r.plate]) {
-      byPlate[r.plate] = {
-        plate: r.plate, plateOrig: r.plateOrig, deviceName: r.deviceName, deviceId: r.deviceId,
-        total: 0, matched: 0, unmatched: 0, trips: []
-      };
-    }
-    byPlate[r.plate].total++;
-    if (r.matched) byPlate[r.plate].matched++;
-    else byPlate[r.plate].unmatched++;
-    byPlate[r.plate].trips.push(r);
-  });
-
   let vehicles = Object.values(byPlate);
+  if (filterPl !== 'all') {
+    vehicles = vehicles.filter(v => v.plate === normPlate(filterPl));
+  }
+  
   vehicles.sort((a,b) => (a[sortCol] > b[sortCol] ? 1 : -1) * sortDir);
 
   const coveragePct = coverage.toFixed(1);
@@ -386,30 +443,31 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
   html.push(`
   <div class="info-bar">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-    Período: ${fmtDateShort(new Date(fromDate))} – ${fmtDateShort(new Date(toDate))} ·
-    Tolerancia ±${tolerance} min · Distancia mínima ≥ ${minDist} km ·
-    ${csvPlates.size} vehículos en CSV · ${vehicles.length} vehículos en Geotab
+    Período CSV: ${fmtDateShort(new Date(fromDate))} – ${fmtDateShort(new Date(toDate))} ·
+    Tolerancia ±${tolerance} min · 
+    <strong>${csvPlates.size}</strong> vehículos en CSV · 
+    <strong>${globalTargetDevices.length}</strong> vehículos vinculados en Geotab
   </div>
   <div class="metrics">
     <div class="metric m-accent">
-      <div class="metric-label">Trips en Geotab</div>
+      <div class="metric-label">Trips totales Geotab</div>
       <div class="metric-value">${totalGeotab.toLocaleString('es')}</div>
-      <div class="metric-sub">mov. real ≥ ${minDist} km</div>
+      <div class="metric-sub">movimientos ≥ ${minDist} km</div>
     </div>
     <div class="metric m-ok">
       <div class="metric-label">Registrados en APP</div>
       <div class="metric-value">${totalMatched.toLocaleString('es')}</div>
-      <div class="metric-sub">${coveragePct}% del total Geotab</div>
+      <div class="metric-sub">${coveragePct}% del total</div>
     </div>
     <div class="metric m-danger">
       <div class="metric-label">No registrados en APP</div>
       <div class="metric-value">${totalUnmatched.toLocaleString('es')}</div>
-      <div class="metric-sub">viajes sin reflejo en la APP</div>
+      <div class="metric-sub">Rutas vacías en app</div>
     </div>
     <div class="metric ${coverageClass}">
-      <div class="metric-label">Cobertura APP</div>
+      <div class="metric-label">Cobertura General</div>
       <div class="metric-value">${coveragePct}%</div>
-      <div class="metric-sub">trips Geotab cubiertos</div>
+      <div class="metric-sub">Eficiencia de registro</div>
     </div>
   </div>
   `);
@@ -417,16 +475,16 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
   html.push(`
   <div class="table-card">
     <div class="table-toolbar">
-      <span class="table-title">Resumen por vehículo</span>
+      <span class="table-title">Desglose Técnico de Coincidencias</span>
       <div class="table-controls">
-        <input class="search" id="searchInput" placeholder="Buscar matrícula…" oninput="filterTable()"/>
+        <input class="search" id="searchInput" placeholder="Buscar por matrícula…" oninput="filterTable()"/>
       </div>
     </div>
     <div class="table-wrap">
     <table>
       <thead><tr>
         <th onclick="resortBy('plateOrig')" class="${sortCol==='plateOrig'?'sorted':''}">Matrícula</th>
-        <th onclick="resortBy('deviceName')" class="${sortCol==='deviceName'?'sorted':''}">Nombre Geotab</th>
+        <th onclick="resortBy('deviceName')" class="${sortCol==='deviceName'?'sorted':''}">Nombre en Geotab</th>
         <th onclick="resortBy('total')" class="${sortCol==='total'?'sorted':''}">Trips Geotab</th>
         <th onclick="resortBy('matched')" class="${sortCol==='matched'?'sorted':''}">En APP</th>
         <th onclick="resortBy('unmatched')" class="${sortCol==='unmatched'?'sorted':''}">No en APP ↓</th>
@@ -444,26 +502,28 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
     detailTrips.sort((a,b) => a.gStart - b.gStart);
 
     html.push(`
-    <tr class="vehicle-row" onclick="toggleExpand('exp-${vi}')">
-      <td><strong>${v.plateOrig}</strong></td>
+    <tr class="vehicle-row" onclick="toggleExpand('exp-${vi}')" style="cursor:pointer;">
+      <td><strong>${v.plate}</strong></td>
       <td style="color:var(--ink-mid)">${v.deviceName}</td>
       <td>${v.total}</td>
       <td style="color:var(--ok);font-weight:600;">${v.matched}</td>
       <td style="color:var(--danger);font-weight:700;">${v.unmatched}</td>
       <td>
         <div class="mini-bar">
-          <div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${cov.toFixed(0)}%;background:${barColor};"></div></div>
-          <span>${cov.toFixed(0)}%</span>
+          <div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${v.total > 0 ? cov.toFixed(0) : 0}%;background:${barColor};"></div></div>
+          <span>${v.total > 0 ? cov.toFixed(0) + '%' : '0%'}</span>
         </div>
       </td>
-      <td style="color:var(--ink-light);font-size:12px;cursor:pointer;">${v.unmatched > 0 ? '▼ ver detalle' : '—'}</td>
+      <td style="color:var(--ink-light);font-size:12px;">${v.total > 0 ? '▼ ver rutas' : 'Sin histórico'}</td>
     </tr>
     `);
 
     html.push(`<tr><td colspan="7" style="padding:0;">`);
     html.push(`<div class="expand-section" id="exp-${vi}">`);
-    if (detailTrips.length === 0) {
-      html.push(`<div class="trips-sub"><p style="font-size:12px;color:var(--ok);">✓ Todos los trips están registrados en la APP.</p></div>`);
+    if (v.total === 0) {
+      html.push(`<div class="trips-sub"><p style="font-size:12px;color:var(--danger);margin:0;">⚠️ Alerta: El vehículo fue emparejado, pero la API de Geotab devolvió 0 viajes en este rango de fechas.</p></div>`);
+    } else if (detailTrips.length === 0) {
+      html.push(`<div class="trips-sub"><p style="font-size:12px;color:var(--ok);margin:0;">✓ Excelente: Todos los viajes detectados están debidamente cruzados con la APP VTC.</p></div>`);
     } else {
       html.push(`<div class="trips-sub"><div class="trip-list">`);
       detailTrips.forEach(t => {
@@ -473,7 +533,7 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
           : `<span class="pill pill-danger">Sin registrar (Vacío)</span>`;
 
         const stopBadgeHtml = t.stopsCount > 0 
-          ? `<br><div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>` 
+          ? `<br><div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápidas en trayecto</div>` 
           : '';
 
         html.push(`
@@ -504,6 +564,16 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
   document.getElementById('btnExport').style.display = 'inline-flex';
 }
 
+function applyFilters() {
+  if (globalTargetDevices.length > 0) {
+    renderResults(
+      parseInt(document.getElementById('tolerance').value)||5,
+      parseFloat(document.getElementById('minDist').value)||0.5,
+      globalFromDate, globalToDate
+    );
+  }
+}
+
 function toggleExpand(id) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -524,12 +594,7 @@ function filterTable() {
 function resortBy(col) {
   if (sortCol === col) sortDir *= -1;
   else { sortCol = col; sortDir = -1; }
-  renderResults(
-    parseInt(document.getElementById('tolerance').value)||5,
-    parseFloat(document.getElementById('minDist').value)||0.5,
-    new Date(Math.min(...csvTrips.map(t=>t.reqTime))).toISOString(),
-    new Date(Math.max(...csvTrips.map(t=>t.reqTime))).toISOString()
-  );
+  applyFilters();
 }
 
 function buildMapUrl(t) {
