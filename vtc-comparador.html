@@ -111,6 +111,7 @@
 <script>
 // ── ESTADO GLOBAL ────────────────────────────────────────
 let api = null;
+let globalState = null;
 let serverStr = 'my.geotab.com';
 let databaseStr = '';
 let csvTrips = [];          
@@ -137,6 +138,7 @@ geotab.addin.blunvtccomparador = function () {
   return {
     initialize: function (geotabApi, state, callback) {
       api = geotabApi; 
+      globalState = state;
       api.getSession(function(session) {
         if(session) {
           serverStr = session.server || 'my.geotab.com';
@@ -147,7 +149,9 @@ geotab.addin.blunvtccomparador = function () {
         callback();      
       });
     },
-    focus: function (geotabApi, state) {},
+    focus: function (geotabApi, state) {
+      globalState = state;
+    },
     blur: function (geotabApi, state) {}
   };
 };
@@ -562,17 +566,17 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
         const stopBadgeHtml = t.stopsCount > 0 ? `<br><div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>` : '';
 
         html.push(`
-        <div class="trip-item">
-          <span class="trip-date">${fmtDateShort(t.gStart)}</span>
-          <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
-          <span class="trip-dist"><strong>${t.gDist} km</strong></span>
-          <span class="trip-route"><strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small></span>
-          <div class="trip-actions" style="text-align:right;">
-            ${matchBadge}
-            ${stopBadgeHtml}
-            <br><a class="trip-link" href="${mapUrl}" target="_blank">Ver Mapa</a>
-          </div>
-        </div>`);
+       <div class="trip-item">
+  <span class="trip-date">${fmtDateShort(t.gStart)}</span>
+  <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
+  <span class="trip-dist"><strong>${t.gDist} km</strong></span>
+  <span class="trip-route"><strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small></span>
+  <div class="trip-actions" style="text-align:right;">
+    ${matchBadge}
+    ${stopBadgeHtml}
+    <br><a class="trip-link" href="#" onclick="navigateToTrip(event, '${t.deviceId}', '${t.gStart.toISOString()}', '${t.gStop.toISOString()}')">Ver Mapa</a>
+  </div>
+</div>`);
       });
       html.push(`</div></div>`);
     }
@@ -620,6 +624,19 @@ function buildMapUrl(t) {
   return `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:${t.deviceId}),fromDate:${from},toDate:${to}`;
 }
 
+function navigateToTrip(event, deviceId, fromDate, toDate) {
+  if (event) event.preventDefault(); // Evita el comportamiento por defecto del enlace '#'
+
+  if (globalState && typeof globalState.setState === 'function') {
+    // Inyecta el estado directamente en el cascarón de MyGeotab sin recargar la página
+    globalState.setState(`tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`);
+  } else {
+    // Fallback de seguridad por si pruebas el HTML en local/standalone
+    const url = `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`;
+    window.open(url, '_blank');
+  }
+}
+  
 function exportExcel() {
   const unmatched = results.filter(r => !r.matched);
   const rows = [
