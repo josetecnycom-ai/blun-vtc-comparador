@@ -1,226 +1,658 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <meta charset="utf-8">
-    <title>VTC Comparador</title>
-    <link rel="stylesheet" href="vtc-comparador.css">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Comparador de Viajes VTC</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="css/vtc-comparador.css">
+  <style>
+    .stop-badge { 
+      display: inline-block; 
+      background: #fff3cd; 
+      color: #856404; 
+      padding: 3px 8px; 
+      border-radius: 4px; 
+      font-size: 11px; 
+      margin-top: 4px; 
+      border: 1px solid #ffeeba;
+      font-weight: 600;
+    }
+    .diagnostic-box {
+      text-align: left; 
+      background: #f8d7da; 
+      color: #721c24; 
+      padding: 20px; 
+      border-radius: 6px; 
+      margin-top: 15px; 
+      font-size: 13px;
+      border: 1px solid #f5c6cb;
+      line-height: 1.5;
+    }
+    .diagnostic-code {
+      background: rgba(0,0,0,0.05); 
+      padding: 8px; 
+      display: block; 
+      border-radius: 4px; 
+      margin-top: 5px; 
+      font-family: monospace;
+      color: #333;
+    }
+  </style>
 </head>
-<body>
+<body style="margin: 0; padding: 0; width: 100%; height: 100%; background-color: transparent !important; color: var(--ink);">
 
-<div id="vtc-comparador-container">
-    <div class="vtc-dashboard">
-        <div class="vtc-card"><h3>Trips Geotab</h3><p id="dash-trips">0</p></div>
-        <div class="vtc-card"><h3>Registrados APP</h3><p id="dash-app">0</p></div>
-        <div class="vtc-card"><h3>No Registrados</h3><p id="dash-noapp">0</p></div>
-        <div class="vtc-card"><h3>🚨 Sospechosos</h3><p id="dash-sus">0</p></div>
+<div id="vtc-app-wrapper">
+  <div class="header">
+    <div class="header-left">
+      <div class="header-logo">
+        <svg viewBox="0 0 24 24"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/><line x1="9" y1="11" x2="9" y2="17"/><line x1="12" y1="8" x2="12" y2="17"/><line x1="15" y1="5" x2="15" y2="11"/></svg>
+      </div>
+      <h1>Comparador de Viajes VTC</h1>
+      <span class="header-sub">APP vs Geotab</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span class="badge-db" id="dbNameBadge">Desconectado</span>
+      <button class="btn" id="btnExport" style="display:none;" onclick="exportExcel()">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Exportar Excel
+      </button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="upload-zone" id="dropZone"
+      ondragover="onDrag(event,true)" ondragleave="onDrag(event,false)"
+      ondrop="onDrop(event)" onclick="document.getElementById('fileInput').click()">
+      <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <p id="uploadLabel">Arrastra el CSV de la APP aquí o <strong>haz clic para seleccionar</strong></p>
+      <input type="file" id="fileInput" accept=".csv" onchange="handleFile(this.files[0])"/>
     </div>
 
-    <div class="vtc-controls">
-        <div>
-            <label>Filtro: </label>
-            <select id="vtc-filter">
-                <option value="ALL">Todos</option>
-                <option value="NO_APP">No registrados</option>
-                <option value="SUSPECTS">Solo sospechosos</option>
-                <option value="HIGH">Solo riesgo alto</option>
-                <option value="CRITICAL">Solo riesgo crítico</option>
-            </select>
-        </div>
-        <button class="vtc-btn-excel" id="vtc-export">📥 Exportar a Excel</button>
+    <div class="settings-bar">
+      <div class="setting-group">
+        <label>Tolerancia horaria (min)</label>
+        <input type="text" id="tolerance" value="5" style="width:90px;"/>
+      </div>
+      <div class="setting-group">
+        <label>Distancia mínima Geotab (km)</label>
+        <input type="text" id="minDist" value="0.5" style="width:110px;"/>
+      </div>
+      <div class="setting-group">
+        <label>Filtrar vehículo</label>
+        <select id="filterVehicle" onchange="applyFilters()">
+          <option value="all">Todos</option>
+        </select>
+      </div>
+      <div class="setting-group">
+        <label>Mostrar en detalle</label>
+        <select id="filterShow" onchange="applyFilters()">
+          <option value="unmatched">Solo no registrados en APP</option>
+          <option value="all">Todos los trips de Geotab</option>
+        </select>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:flex-end;">
+        <button class="btn btn-primary" id="btnRun" onclick="runComparison()" disabled>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Comparar
+        </button>
+      </div>
     </div>
 
-    <div class="vtc-table-wrapper">
-        <table class="vtc-table">
-            <thead>
-                <tr>
-                    <th>Riesgo</th>
-                    <th>Vehículo</th>
-                    <th>Inicio</th>
-                    <th>Km Geotab</th>
-                    <th>Paradas Rápidas</th>
-                    <th>Tiempo Detenido</th>
-                    <th>APP</th>
-                </tr>
-            </thead>
-            <tbody id="vtc-table-body">
-                </tbody>
-        </table>
+    <div id="resultsArea">
+      <div class="state">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#ccc" stroke-width="2"><path d="M9 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><path d="m19 14-2 3h4l-2 3"/></svg>
+        <p>Carga el CSV de la APP y pulsa <strong>Comparar</strong> para cruzar datos con Geotab.</p>
+      </div>
     </div>
+  </div>
 </div>
 
 <script>
-geotab.addin.vtcComparador = function (api, state) {
-    let ruleIdParadaRapida = null;
-    let dataStore = []; 
+// ── ESTADO GLOBAL ────────────────────────────────────────
+let api = null;
+let serverStr = 'my.geotab.com';
+let databaseStr = '';
+let csvTrips = [];          
+let geotabTrips = [];       
+let results = [];           
+let csvPlates = new Set();  
+let sortCol = 'csvTotalTrips';
+let sortDir = -1;
 
-    // --- Lógica de Negocio ---
-    
-    const calcularRiesgo = (tieneApp, numParadas, tiempoDetenido, diffKm) => {
-        let score = 0;
-        if (!tieneApp) score += 40;
-        score += (numParadas * 15);
-        if (tiempoDetenido > 120) score += 20;
-        if (diffKm > 5) score += 25;
+let globalTargetDevices = [];
+let globalFromDate = '';
+let globalToDate = '';
 
-        if (score < 30) return { nivel: 'BAJO', clase: 'bajo' };
-        if (score < 60) return { nivel: 'MEDIO', clase: 'medio' };
-        if (score < 85) return { nivel: 'ALTO', clase: 'alto' };
-        return { nivel: 'CRÍTICO', clase: 'critico' };
-    };
+// ── INIT GEOTAB ──────────────────────────────────────────
+if (typeof geotab === 'undefined') {
+  window.geotab = { addin: {} };
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('resultsArea').innerHTML =
+      '<div class="state"><div class="spinner"></div><p>Modo standalone — conecta a Geotab para datos reales.</p></div>';
+  });
+}
 
-    const getRuleId = async () => {
-        return new Promise((resolve, reject) => {
-            api.call("Get", {
-                typeName: "Rule",
-                search: { name: "Parada rápida" }
-            }, (result) => {
-                if (result && result.length > 0) resolve(result[0].id);
-                else resolve(null);
-            }, reject);
-        });
-    };
-
-    const fetchOptimizedData = async () => {
-        // 1. Obtener la regla dinámicamente y cachearla
-        if (!ruleIdParadaRapida) {
-            ruleIdParadaRapida = await getRuleId();
+geotab.addin.blunvtccomparador = function () {
+  return {
+    initialize: function (geotabApi, state, callback) {
+      api = geotabApi; 
+      api.getSession(function(session) {
+        if(session) {
+          serverStr = session.server || 'my.geotab.com';
+          databaseStr = session.database || 'Desconocida';
+          const dbBadge = document.getElementById('dbNameBadge');
+          if (dbBadge) dbBadge.textContent = databaseStr;
         }
-        
-        if (!ruleIdParadaRapida) {
-            console.error("Regla 'Parada rápida' no encontrada.");
-            return;
-        }
-
-        // 2. Fetch Trips (Simulado para ejemplo, debes usar state.device o timeframe)
-        // Ejemplo simplificado: En producción usarías fechas y vehículos reales de 'state'
-        const trips = await new Promise(res => api.call("Get", { typeName: "Trip", resultsLimit: 50 }, res));
-        
-        let exceptionsData = [];
-        // Optimizamos: pedimos ExceptionEvents solo para la regla que nos interesa en el rango de fechas
-        if (trips.length > 0) {
-            exceptionsData = await new Promise(res => api.call("Get", {
-                typeName: "ExceptionEvent",
-                search: { ruleSearch: { id: ruleIdParadaRapida } },
-                resultsLimit: 200
-            }, res));
-        }
-
-        dataStore = procesarViajes(trips, exceptionsData);
-        renderizarTabla(dataStore);
-        actualizarDashboard(dataStore);
-    };
-
-    const procesarViajes = (trips, exceptions) => {
-        return trips.map(trip => {
-            // Relacionar excepciones con este viaje
-            const tripExceptions = exceptions.filter(e => 
-                new Date(e.activeFrom) >= new Date(trip.start) && 
-                new Date(e.activeTo) <= new Date(trip.stop)
-            );
-
-            // Cálculo duración real (Duración de excepción + 45 segundos)
-            let tiempoDetenido = 0;
-            tripExceptions.forEach(e => {
-                const diffSecs = (new Date(e.activeTo) - new Date(e.activeFrom)) / 1000;
-                tiempoDetenido += (diffSecs + 45); 
-            });
-
-            // Simulación de datos de la APP para la lógica (Esto vendría de tu API externa)
-            const tieneApp = Math.random() > 0.5; 
-            const kmGeotab = trip.distance;
-            const diffKm = tieneApp ? Math.random() * 10 : kmGeotab; 
-
-            const riesgo = calcularRiesgo(tieneApp, tripExceptions.length, tiempoDetenido, diffKm);
-
-            return {
-                id: trip.id,
-                vehiculo: trip.device.id,
-                inicio: new Date(trip.start).toLocaleString(),
-                kmGeotab: kmGeotab.toFixed(2),
-                paradas: tripExceptions.length,
-                tiempo: tiempoDetenido.toFixed(0),
-                tieneApp: tieneApp,
-                riesgo: riesgo
-            };
-        });
-    };
-
-    // --- Lógica Visual y Eventos ---
-
-    const actualizarDashboard = (data) => {
-        document.getElementById('dash-trips').innerText = data.length;
-        document.getElementById('dash-app').innerText = data.filter(d => d.tieneApp).length;
-        document.getElementById('dash-noapp').innerText = data.filter(d => !d.tieneApp).length;
-        document.getElementById('dash-sus').innerText = data.filter(d => d.riesgo.nivel === 'ALTO' || d.riesgo.nivel === 'CRÍTICO').length;
-    };
-
-    const renderizarTabla = (data) => {
-        const tbody = document.getElementById('vtc-table-body');
-        tbody.innerHTML = '';
-        data.forEach(row => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><span class="badge ${row.riesgo.clase}">${row.riesgo.nivel}</span></td>
-                <td>${row.vehiculo}</td>
-                <td>${row.inicio}</td>
-                <td>${row.kmGeotab}</td>
-                <td>${row.paradas}</td>
-                <td>${row.tiempo} s</td>
-                <td>${row.tieneApp ? 'Sí' : 'No'}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-    };
-
-    const aplicarFiltro = () => {
-        const filterVal = document.getElementById('vtc-filter').value;
-        let filtered = dataStore;
-        
-        if (filterVal === 'NO_APP') filtered = dataStore.filter(d => !d.tieneApp);
-        else if (filterVal === 'SUSPECTS') filtered = dataStore.filter(d => ['ALTO', 'CRÍTICO'].includes(d.riesgo.nivel));
-        else if (filterVal === 'HIGH') filtered = dataStore.filter(d => d.riesgo.nivel === 'ALTO');
-        else if (filterVal === 'CRITICAL') filtered = dataStore.filter(d => d.riesgo.nivel === 'CRÍTICO');
-
-        renderizarTabla(filtered);
-    };
-
-    const exportarExcel = () => {
-        const headers = ["Riesgo", "Vehiculo", "Inicio", "Km Geotab", "Paradas", "Tiempo Detenido (s)", "Registrado APP"];
-        const rows = dataStore.map(d => [
-            d.riesgo.nivel, d.vehiculo, d.inicio, d.kmGeotab, d.paradas, d.tiempo, d.tieneApp ? 'SI' : 'NO'
-        ]);
-        
-        // Exportación CSV con BOM para que Excel lea los caracteres en UTF-8 correctamente
-        let csvContent = "\uFEFF" + headers.join(";") + "\r\n";
-        rows.forEach(row => {
-            csvContent += row.join(";") + "\r\n";
-        });
-
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", "vtc_report.csv");
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    return {
-        initialize: function (api, state, callback) {
-            document.getElementById('vtc-filter').addEventListener('change', aplicarFiltro);
-            document.getElementById('vtc-export').addEventListener('click', exportarExcel);
-            callback();
-        },
-        focus: function (api, state) {
-            fetchOptimizedData();
-        },
-        blur: function (api, state) {
-            // Limpieza si es necesaria al salir de la pestaña
-        }
-    };
+        callback();      
+      });
+    },
+    focus: function (geotabApi, state) {},
+    blur: function (geotabApi, state) {}
+  };
 };
+
+function normPlate(p) {
+  return String(p||'').replace(/[\s\-]/g,'').toUpperCase().trim();
+}
+
+function onDrag(e, over) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.toggle('drag', over);
+}
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+}
+
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    parseCSV(text, file.name);
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function parseCSV(text, fname) {
+  text = text.replace(/^\uFEFF/, '');
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if(lines.length === 0) return;
+
+  const firstLine = lines[0];
+  const sep = firstLine.includes(';') ? ';' : ',';
+  const header = firstLine.split(sep);
+
+  const idx = {};
+  header.forEach((h, i) => { idx[h.trim()] = i; });
+
+  const trips = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(sep);
+    if(cols.length < 2) continue;
+
+    const estado = (cols[idx['Estado del viaje']]||'').trim();
+    if (estado !== 'completed') continue;
+
+    const plateRaw = cols[idx['Matrícula']] || '';
+    const plate = normPlate(plateRaw);
+    const reqStr = (cols[idx['Hora de la solicitud del viaje']]||'').trim();
+    const arrStr = (cols[idx['Hora de llegada del viaje']]||'').trim();
+    
+    if (!plate || !reqStr || !arrStr) continue;
+
+    trips.push({
+      uuid: cols[idx['UUID del viaje']],
+      conductor: (cols[idx['Nombre del conductor']]||'') + ' ' + (cols[idx['Apellido del conductor']]||''),
+      plate,
+      plateRaw,
+      reqTime: parseDate(reqStr),
+      arrTime: parseDate(arrStr),
+      dist: parseFloat((cols[idx['Distancia del viaje']]||'0').replace(',','.'))
+    });
+  }
+
+  csvTrips = trips.filter(t => t.reqTime && t.arrTime); 
+  csvPlates = new Set(csvTrips.map(t => t.plate));
+
+  document.getElementById('uploadLabel').innerHTML =
+    `<strong style="color:var(--ok);">✓ ${fname}</strong> — ${csvTrips.length.toLocaleString('es')} viajes completados cargados`;
+
+  const sel = document.getElementById('filterVehicle');
+  sel.innerHTML = '<option value="all">Todos</option>';
+  [...csvPlates].sort().forEach(p => {
+    const o = document.createElement('option');
+    o.value = p; o.textContent = p;
+    sel.appendChild(o);
+  });
+
+  document.getElementById('btnRun').disabled = false;
+}
+
+function parseDate(s) {
+  if (!s) return null;
+  const m = s.match(/(\d{1,2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
+}
+
+function callApi(method, params) {
+  return new Promise((res, rej) => api.call(method, params, res, rej));
+}
+
+// ── EXTRACCIÓN DE PARÁMETROS SEGUROS ─────────────────────
+function getSafeFilters() {
+  let rawTol = document.getElementById('tolerance').value.replace(',', '.');
+  let tol = parseInt(rawTol);
+  if (isNaN(tol)) tol = 5;
+
+  let rawMin = document.getElementById('minDist').value.replace(',', '.');
+  let minD = parseFloat(rawMin);
+  if (isNaN(minD)) minD = 0.5;
+
+  return { tolerance: tol, minDist: minD };
+}
+
+// ── COMPARACIÓN PRINCIPAL ────────────────────────────────
+async function runComparison() {
+  if (!api) { alert('Conecta a Geotab para ejecutar la comparación.'); return; }
+  if (csvTrips.length === 0) { alert('Primero carga el CSV.'); return; }
+
+  const { tolerance, minDist } = getSafeFilters();
+
+  showLoading('Obteniendo flota de Geotab…');
+
+  try {
+    const devices = await callApi('Get', { typeName: 'Device', resultsLimit: 2000 });
+    const users = await callApi('Get', { typeName: 'User', resultsLimit: 5000 });
+    
+    const userMap = {};
+    users.forEach(u => {
+      userMap[u.id] = (u.firstName && u.lastName) ? (u.firstName + ' ' + u.lastName) : (u.name || 'Desconocido');
+    });
+
+    const targetDevices = [];
+    devices.forEach(d => {
+      const normDevName = normPlate(d.name || '');
+      const normDevPlate = normPlate(d.licensePlate || '');
+      
+      const matchingCsvPlate = [...csvPlates].find(p => normDevName.includes(p) || normDevPlate.includes(p));
+      if (matchingCsvPlate) {
+        d._matchedCsvPlate = matchingCsvPlate; 
+        targetDevices.push(d);
+      }
+    });
+
+    if (targetDevices.length === 0) {
+      document.getElementById('resultsArea').innerHTML = `
+        <div class="diagnostic-box">
+          <h3 style="margin-top:0;">⚠️ Alerta de Nomenclatura</h3>
+          <p>Ninguna de las matrículas del CSV encaja con los vehículos de Geotab.</p>
+        </div>`;
+      return;
+    }
+
+    globalTargetDevices = targetDevices;
+
+    // Cálculo ultra-seguro de fechas (evita límites de Call Stack)
+    let minTimestamp = Infinity;
+    let maxTimestamp = -Infinity;
+    csvTrips.forEach(t => {
+      const time = t.reqTime.getTime();
+      if (time < minTimestamp) minTimestamp = time;
+      if (time > maxTimestamp) maxTimestamp = time;
+    });
+
+    const minDate = new Date(minTimestamp);
+    const maxDate = new Date(maxTimestamp);
+    minDate.setHours(0,0,0,0);
+    maxDate.setHours(23,59,59,999);
+
+    globalFromDate = minDate.toISOString();
+    globalToDate   = maxDate.toISOString();
+
+    let allTrips = [];
+    for (let i = 0; i < targetDevices.length; i++) {
+      const dev = targetDevices[i];
+      updateLoading(`Descargando datos telemáticos… vehículo ${i+1}/${targetDevices.length}: ${dev.name}`);
+      try {
+        const trips = await callApi('Get', {
+          typeName: 'Trip',
+          search: { fromDate: globalFromDate, toDate: globalToDate, deviceSearch: { id: dev.id } },
+          resultsLimit: 50000
+        });
+
+        const stops = await callApi('Get', {
+          typeName: 'ExceptionEvent',
+          search: {
+            fromDate: globalFromDate,
+            toDate: globalToDate,
+            ruleSearch: { id: "aqL2ahmjVl0ev8BRJxP6IqA" }, 
+            deviceSearch: { id: dev.id }
+          }
+        }).catch(() => []); 
+
+        trips.forEach(t => { 
+          t._device = dev;
+          const tStart = new Date(t.start || t.startTime).getTime();
+          const tStop = new Date(t.stop || t.stopTime).getTime();
+          t._stops = stops.filter(s => {
+            const sTime = new Date(s.activeFrom).getTime();
+            return sTime >= tStart && sTime <= tStop;
+          });
+        });
+
+        allTrips = allTrips.concat(trips);
+      } catch(e) {
+        console.warn('Ignorado error en dispositivo: ', dev.id, e);
+      }
+    }
+
+    updateLoading('Procesando cruce de rutas de la flota...');
+
+    // LECTURA DIRECTA DE KILÓMETROS (Sin divisiones)
+    const geotabFiltered = allTrips.filter(t => (t.distance || 0) >= minDist);
+    
+    if (allTrips.length === 0 || geotabFiltered.length === 0) {
+      document.getElementById('resultsArea').innerHTML = `
+        <div class="diagnostic-box">
+          <h3 style="margin-top:0; color:#c0392b;">📡 Geotab mandó 0 viajes válidos</h3>
+          <p>O no hay actividad real, o los viajes son más cortos que tu filtro (≥ ${minDist} km).</p>
+        </div>`;
+      return;
+    }
+
+    const tolMs = tolerance * 60 * 1000;
+    results = geotabFiltered.map(t => {
+      const dev = t._device;
+      const plate = dev._matchedCsvPlate; 
+      const gStart = new Date(t.start || t.startTime);
+      const gStop  = new Date(t.stop  || t.stopTime);
+      const gDist  = t.distance || 0; // KILÓMETROS PUROS
+
+      let geotabDriverName = "Sin conductor";
+      if (t.driver && t.driver.id && t.driver.id !== "UnknownDriverId" && t.driver.id !== "NoDriverId") {
+        geotabDriverName = userMap[t.driver.id] || t.driver.id;
+      }
+
+      const matchedCSVTrips = csvTrips.filter(c => {
+        if (c.plate !== plate) return false;
+        const maxStart = Math.max(gStart.getTime() - tolMs, c.reqTime.getTime());
+        const minEnd = Math.min(gStop.getTime() + tolMs, c.arrTime.getTime());
+        return minEnd > maxStart;
+      });
+
+      const csvCount = matchedCSVTrips.length;
+      const csvTotalDist = matchedCSVTrips.reduce((sum, c) => sum + (c.dist || 0), 0);
+
+      return {
+        gId: t.id, gStart, gStop,
+        gDist: +gDist.toFixed(2),
+        gDur: Math.round((gStop - gStart) / 60000),
+        plate, plateOrig: dev.name,
+        deviceId: dev.id, deviceName: dev.name,
+        geotabDriverName,
+        matched: csvCount > 0, 
+        csvCount: csvCount,
+        csvTotalDist: +csvTotalDist.toFixed(2),
+        stopsCount: t._stops ? t._stops.length : 0 
+      };
+    });
+
+    renderResults(tolerance, minDist, globalFromDate, globalToDate);
+
+  } catch(err) {
+    console.error(err);
+    showError('Error de comunicación SDK: ' + (err?.message || String(err)));
+  }
+}
+
+// ── RENDERIZADO ──────────────────────────────────────────
+function renderResults(tolerance, minDist, fromDate, toDate) {
+  const filterPl = document.getElementById('filterVehicle').value;
+
+  const csvCountMap = {};
+  csvTrips.forEach(t => {
+    csvCountMap[t.plate] = (csvCountMap[t.plate] || 0) + 1;
+  });
+
+  const byPlate = {};
+  globalTargetDevices.forEach(dev => {
+    const p = dev._matchedCsvPlate;
+    byPlate[p] = {
+      plate: p, 
+      plateOrig: dev.name, 
+      deviceName: dev.name, 
+      deviceId: dev.id,
+      csvTotalTrips: csvCountMap[p] || 0,
+      total: 0, 
+      matched: 0, 
+      unmatched: 0, 
+      trips: []
+    };
+  });
+
+  let data = results;
+  if (filterPl !== 'all') data = data.filter(r => r.plate === normPlate(filterPl));
+
+  data.forEach(r => {
+    const v = byPlate[r.plate];
+    if (v) {
+      v.total++;
+      if (r.matched) v.matched++;
+      else v.unmatched++;
+      v.trips.push(r);
+    }
+  });
+
+  const totalGeotab = data.length;
+  const totalMatched = data.filter(r => r.matched).length;
+  const totalUnmatched = totalGeotab - totalMatched;
+  const coverage = totalGeotab > 0 ? (totalMatched / totalGeotab * 100) : 0;
+
+  let vehicles = Object.values(byPlate);
+  if (filterPl !== 'all') {
+    vehicles = vehicles.filter(v => v.plate === normPlate(filterPl));
+  }
+  
+  vehicles.forEach(v => {
+    v._cov = v.total > 0 ? (v.matched / v.total * 100) : 0;
+  });
+  vehicles.sort((a,b) => (a[sortCol] > b[sortCol] ? 1 : -1) * sortDir);
+
+  const coveragePct = coverage.toFixed(1);
+  const coverageClass = coverage >= 85 ? 'm-ok' : coverage >= 60 ? 'm-warn' : 'm-danger';
+
+  const html = [];
+  html.push(`
+  <div class="info-bar">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    Período: ${fmtDateShort(new Date(fromDate))} al ${fmtDateShort(new Date(toDate))} ·
+    <strong>${csvTrips.length}</strong> viajes totales en el CSV
+  </div>
+  <div class="metrics">
+    <div class="metric m-accent">
+      <div class="metric-label">Trips en Geotab</div>
+      <div class="metric-value">${totalGeotab.toLocaleString('es')}</div>
+      <div class="metric-sub">encontrados en la API</div>
+    </div>
+    <div class="metric m-ok">
+      <div class="metric-label">Cruzados con Éxito</div>
+      <div class="metric-value">${totalMatched.toLocaleString('es')}</div>
+      <div class="metric-sub">${coveragePct}% de la flota</div>
+    </div>
+    <div class="metric m-danger">
+      <div class="metric-label">Huecos (No en APP)</div>
+      <div class="metric-value">${totalUnmatched.toLocaleString('es')}</div>
+      <div class="metric-sub">Sin reflejo en VTC</div>
+    </div>
+    <div class="metric ${coverageClass}">
+      <div class="metric-label">Cobertura General</div>
+      <div class="metric-value">${coveragePct}%</div>
+      <div class="metric-sub">Eficiencia global</div>
+    </div>
+  </div>
+  `);
+
+  html.push(`
+  <div class="table-card">
+    <div class="table-toolbar">
+      <span class="table-title">Desglose por Vehículo</span>
+      <div class="table-controls">
+        <input class="search" id="searchInput" placeholder="Buscar por matrícula…" oninput="filterTable()"/>
+      </div>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th onclick="resortBy('plate')">Matrícula</th>
+        <th onclick="resortBy('deviceName')">Nombre Geotab</th>
+        <th onclick="resortBy('csvTotalTrips')" style="color:var(--accent);">Viajes en CSV ↓</th>
+        <th onclick="resortBy('total')">Trips Geotab</th>
+        <th onclick="resortBy('matched')">Cruzados OK</th>
+        <th onclick="resortBy('unmatched')">No en APP</th>
+        <th onclick="resortBy('_cov')">Cobertura</th>
+        <th>Detalles</th>
+      </tr></thead>
+      <tbody id="vehicleTableBody">
+  `);
+
+  vehicles.forEach((v, vi) => {
+    const cov = v._cov;
+    const barColor = cov >= 85 ? 'var(--ok)' : cov >= 60 ? 'var(--warn)' : 'var(--danger)';
+    const showAll = document.getElementById('filterShow').value === 'all';
+    const detailTrips = showAll ? v.trips : v.trips.filter(t => !t.matched);
+    detailTrips.sort((a,b) => a.gStart - b.gStart);
+
+    html.push(`
+    <tr class="vehicle-row" onclick="toggleExpand('exp-${vi}')" style="cursor:pointer;">
+      <td><strong>${v.plate}</strong></td>
+      <td style="color:var(--ink-mid)">${v.deviceName}</td>
+      <td style="color:var(--accent); font-weight:700; font-size:14px;">${v.csvTotalTrips}</td>
+      <td>${v.total}</td>
+      <td style="color:var(--ok);font-weight:600;">${v.matched}</td>
+      <td style="color:var(--danger);font-weight:700;">${v.unmatched}</td>
+      <td>
+        <div class="mini-bar">
+          <div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${v.total > 0 ? cov.toFixed(0) : 0}%;background:${barColor};"></div></div>
+          <span>${v.total > 0 ? cov.toFixed(0) + '%' : '0%'}</span>
+        </div>
+      </td>
+      <td style="color:var(--ink-light);font-size:12px;">${v.total > 0 ? '▼ ver rutas' : 'Sin histórico API'}</td>
+    </tr>
+    `);
+
+    html.push(`<tr><td colspan="8" style="padding:0;">`);
+    html.push(`<div class="expand-section" id="exp-${vi}">`);
+    if (v.total === 0) {
+      html.push(`<div class="trips-sub"><p style="font-size:12px;color:#c0392b;margin:0; font-weight:600;">⚠️ Geotab no devolvió viajes para este vehículo (o fueron menores al filtro de distancia).</p></div>`);
+    } else if (detailTrips.length === 0) {
+      html.push(`<div class="trips-sub"><p style="font-size:12px;color:var(--ok);margin:0;">✓ Todo correcto: Todos los viajes de Geotab encajan con la APP.</p></div>`);
+    } else {
+      html.push(`<div class="trips-sub"><div class="trip-list">`);
+      detailTrips.forEach(t => {
+        const mapUrl = buildMapUrl(t);
+        const matchBadge = t.matched 
+          ? `<span class="pill pill-ok">Contiene ${t.csvCount} viaje(s) APP</span>` 
+          : `<span class="pill pill-danger">Sin registrar (Vacío)</span>`;
+
+        const stopBadgeHtml = t.stopsCount > 0 ? `<br><div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>` : '';
+
+        html.push(`
+        <div class="trip-item">
+          <span class="trip-date">${fmtDateShort(t.gStart)}</span>
+          <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
+          <span class="trip-dist"><strong>${t.gDist} km</strong></span>
+          <span class="trip-route"><strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small></span>
+          <div class="trip-actions" style="text-align:right;">
+            ${matchBadge}
+            ${stopBadgeHtml}
+            <br><a class="trip-link" href="${mapUrl}" target="_blank">Ver Mapa</a>
+          </div>
+        </div>`);
+      });
+      html.push(`</div></div>`);
+    }
+    html.push(`</div></td></tr>`);
+  });
+
+  html.push(`</tbody></table></div></div>`);
+  document.getElementById('resultsArea').innerHTML = html.join('');
+  document.getElementById('btnExport').style.display = 'inline-flex';
+}
+
+function applyFilters() {
+  if (globalTargetDevices.length > 0) {
+    const { tolerance, minDist } = getSafeFilters();
+    renderResults(tolerance, minDist, globalFromDate, globalToDate);
+  }
+}
+
+function toggleExpand(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isOpen = el.classList.contains('open');
+  document.querySelectorAll('.expand-section.open').forEach(e => e.classList.remove('open'));
+  if (!isOpen) el.classList.add('open');
+}
+
+function filterTable() {
+  const q = document.getElementById('searchInput')?.value.toLowerCase() || '';
+  document.querySelectorAll('.vehicle-row').forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+    if (row.nextElementSibling) row.nextElementSibling.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+function resortBy(col) {
+  if (sortCol === col) sortDir *= -1;
+  else { sortCol = col; sortDir = -1; }
+  applyFilters();
+}
+
+function buildMapUrl(t) {
+  const from = t.gStart.toISOString();
+  const to   = t.gStop.toISOString();
+  return `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:${t.deviceId}),fromDate:${from},toDate:${to}`;
+}
+
+function exportExcel() {
+  const unmatched = results.filter(r => !r.matched);
+  const rows = [
+    ['Matrícula', 'Nombre Geotab', 'Conductor Geotab', 'Fecha', 'Hora inicio', 'Hora fin', 'Duración (min)', 'Distancia Geotab (km)', 'Paradas Rápidas', 'Enlace MyGeotab'],
+    ...unmatched.map(r => [
+      r.plateOrig, r.deviceName, r.geotabDriverName,
+      fmtDate(r.gStart), fmtTime(r.gStart), fmtTime(r.gStop),
+      r.gDur, r.gDist, r.stopsCount, buildMapUrl(r)
+    ])
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet(rows);
+  ws1['!cols'] = [12, 15, 25, 12, 10, 10, 15, 18, 15, 80].map(w => ({wch: w}));
+  XLSX.utils.book_append_sheet(wb, ws1, 'Huecos detectados');
+  XLSX.writeFile(wb, `vtc_gaps_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function fmtDate(d) { return d ? d.toLocaleDateString('es-ES') : ''; }
+function fmtDateShort(d) { return d ? d.toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit'}) : ''; }
+function fmtTime(d) { return d ? d.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'}) : ''; }
+
+function showLoading(msg) {
+  document.getElementById('resultsArea').innerHTML = `<div class="state"><p class="progress-msg">${msg}</p></div>`;
+  document.getElementById('btnExport').style.display = 'none';
+}
+function updateLoading(msg) {
+  const p = document.querySelector('.progress-msg');
+  if (p) p.textContent = msg;
+}
+function showError(msg) {
+  document.getElementById('resultsArea').innerHTML = `<div class="state"><p style="color:var(--danger)">${msg}</p></div>`;
+}
 </script>
 </body>
 </html>
