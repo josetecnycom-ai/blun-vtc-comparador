@@ -612,16 +612,19 @@ function resortBy(col) {
   applyFilters();
 }
 
-// ── FUNCIÓN CORREGIDA SOBRESCRIBIENDO EL OBJETO DE RANGO COMPLETO ──
+// ── FUNCIÓN CORREGIDA CON ARRAY DE DISPOSITIVOS (PLURAL) ──────────
 function buildMapUrl(t) {
   const from = t.gStart.toISOString();
   const to   = t.gStop.toISOString();
   
-  // Definimos el objeto dateRange estructurado para obligar a MyGeotab a machacar el estado "Hoy"
+  // 1. Forzamos el rango personalizado de fechas
   const risonDateRange = `dateRange:(endDate:'${to}',label:Custom,startDate:'${from}')`;
-  const risonDevice    = `device:(id:'${t.deviceId}')`;
   
-  return `https://${serverStr}/${databaseStr}/#tripsHistory,${risonDateRange},${risonDevice},fromDate:'${from}',toDate:'${to}'`;
+  // 2. CORRECCIÓN: Usamos 'devices' (plural) y sintaxis de array Rison !((id:'...'))
+  const risonDevices   = `devices:!((id:'${t.deviceId}'))`;
+  
+  // Construimos la URL combinando ambos bloques estructurados
+  return `https://${serverStr}/${databaseStr}/#tripsHistory,${risonDateRange},${risonDevices},fromDate:'${from}',toDate:'${to}'`;
 }
 
 function exportExcel() {
