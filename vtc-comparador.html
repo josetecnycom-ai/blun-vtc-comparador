@@ -381,21 +381,26 @@ async function runComparison() {
         return minEnd > maxStart;
       });
 
-      const csvCount = matchedCSVTrips.length;
-      const csvTotalDist = matchedCSVTrips.reduce((sum, c) => sum + (c.dist || 0), 0);
+     // ── BUSCA ESTE BLOQUE EN runComparison() Y REPLÁZALO CON ESTE ────────────────
+    const csvCount = matchedCSVTrips.length;
+    const csvTotalDist = matchedCSVTrips.reduce((sum, c) => sum + (c.dist || 0), 0);
 
-      return {
-        gId: t.id, gStart, gStop,
-        gDist: +gDist.toFixed(2),
-        gDur: Math.round((gStop - gStart) / 60000),
-        plate, plateOrig: dev.name,
-        deviceId: dev.id, deviceName: dev.name,
-        geotabDriverName,
-        matched: csvCount > 0, 
-        csvCount: csvCount,
-        csvTotalDist: +csvTotalDist.toFixed(2),
-        stopsCount: t._stops ? t._stops.length : 0 
-      };
+// NUEVO: Calculamos la suma de minutos acumulados de los viajes de la APP
+    const csvTotalDur = matchedCSVTrips.reduce((sum, c) => sum + Math.round((c.arrTime - c.reqTime) / 60000), 0);
+
+  return {
+    gId: t.id, gStart, gStop,
+    gDist: +gDist.toFixed(2),
+    gDur: Math.round((gStop - gStart) / 60000),
+    plate, plateOrig: dev.name,
+    deviceId: dev.id, deviceName: dev.name,
+    geotabDriverName,
+    matched: csvCount > 0, 
+    csvCount: csvCount,
+    csvTotalDist: +csvTotalDist.toFixed(2),
+    csvTotalDur: csvTotalDur, // <── NUEVO: Guardamos los minutos totales APP
+    stopsCount: t._stops ? t._stops.length : 0 
+  };
     });
 
     renderResults(tolerance, minDist, globalFromDate, globalToDate);
@@ -548,30 +553,60 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
       html.push(`<div class="trips-sub"><p style="font-size:12px;color:var(--ok);margin:0;">✓ Todo correcto: Todos los viajes de Geotab encajan con la APP.</p></div>`);
     } else {
       html.push(`<div class="trips-sub"><div class="trip-list">`);
-      detailTrips.forEach(t => {
-        const matchBadge = t.matched 
-          ? `<span class="pill pill-ok">Contiene ${t.csvCount} viaje(s) APP</span>` 
-          : `<span class="pill pill-danger">Sin registrar (Vacío)</span>`;
+      // ── REEMPLAZA EL BUCLE detailTrips.forEach DENTRO DE renderResults() ──
+detailTrips.forEach(t => {
+  const mapUrl = buildMapUrl(t);
+  const matchBadge = t.matched 
+    ? `<span class="pill pill-ok">Contiene ${t.csvCount} viaje(s) APP</span>` 
+    : `<span class="pill pill-danger">Sin registrar (Vacío)</span>`;
 
-        const stopBadgeHtml = t.stopsCount > 0 ? `<br><div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>` : '';
-        
-        // Calculamos la URL absoluta de este viaje concreto
-        const mapUrl = buildMapUrl(t);
+  const stopBadgeHtml = t.stopsCount > 0 ? `<br><div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>` : '';
 
-        // MODIFICADO: Cambiado href al enlace real y aplicado target="_top" para navegación fluida
-        html.push(`
-        <div class="trip-item">
-          <span class="trip-date">${fmtDateShort(t.gStart)}</span>
-          <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
-          <span class="trip-dist"><strong>${t.gDist} km</strong></span>
-          <span class="trip-route"><strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small></span>
-          <div class="trip-actions" style="text-align:right;">
-            ${matchBadge}
-            ${stopBadgeHtml}
-            <br><a class="trip-link" href="${mapUrl}" target="_top">Ver Mapa</a>
-          </div>
-        </div>`);
-      });
+  // ── NUEVO: Bloque de cálculo y diseño de Desfases ──
+  let compareHtml = '';
+  if (t.matched) {
+    // Cálculo de diferencias (Base Geotab)
+    const kmDiff = +(t.csvTotalDist - t.gDist).toFixed(2);
+    const kmDiffStr = kmDiff >= 0 ? `+${kmDiff} km` : `${kmDiff} km`;
+    // Si el desfase es mayor a 2km, lo resalta en rojo
+    const kmClass = Math.abs(kmDiff) > 2.0 ? 'color: var(--danger); font-weight: bold;' : 'color: var(--ok); font-weight: 600;';
+
+    const minDiff = t.csvTotalDur - t.gDur;
+    const minDiffStr = minDiff >= 0 ? `+${minDiff} min` : `${minDiff} min`;
+    // Si el desfase es mayor a 15 minutos, lo resalta en rojo
+    const minClass = Math.abs(minDiff) > 15 ? 'color: var(--danger); font-weight: bold;' : 'color: var(--ok); font-weight: 600;';
+
+    compareHtml = `
+    <div class="trip-compare-box" style="flex-basis: 100%; margin-top: 12px; padding: 10px 14px; background: #f4f6f9; border-left: 4px solid var(--accent); border-radius: 4px; font-size: 12px; display: flex; gap: 24px; text-align: left; width: 100%; box-sizing: border-box;">
+      <div>
+        <span style="color: var(--ink-mid); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">Desfase de Kilómetros</span><br>
+        Geotab: <strong>${t.gDist} km</strong> vs APP: <strong>${t.csvTotalDist} km</strong> 
+        <span style="margin-left: 6px; ${kmClass}">(${kmDiffStr})</span>
+      </div>
+      <div style="border-left: 1px solid #ccc; padding-left: 24px;">
+        <span style="color: var(--ink-mid); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">Desfase de Tiempo</span><br>
+        Geotab: <strong>${t.gDur} min</strong> vs APP: <strong>${t.csvTotalDur} min</strong> 
+        <span style="margin-left: 6px; ${minClass}">(${minDiffStr})</span>
+      </div>
+    </div>
+    `;
+  }
+
+  // Añadimos 'display: flex; flex-wrap: wrap;' a la tarjeta para que el desglose baje perfectamente
+  html.push(`
+  <div class="trip-item" style="display: flex; flex-wrap: wrap; align-items: center;">
+    <span class="trip-date">${fmtDateShort(t.gStart)}</span>
+    <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)} <small style="color: var(--ink-light); margin-left:4px;">(${t.gDur} min)</small></span>
+    <span class="trip-dist"><strong>${t.gDist} km</strong></span>
+    <span class="trip-route"><strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small></span>
+    <div class="trip-actions" style="text-align:right; margin-left: auto;">
+      ${matchBadge}
+      ${stopBadgeHtml}
+      <br><a class="trip-link" href="${mapUrl}" target="_blank">Ver Mapa</a>
+    </div>
+    ${compareHtml}
+  </div>`);
+});
       html.push(`</div></div>`);
     }
     html.push(`</div></td></tr>`);
