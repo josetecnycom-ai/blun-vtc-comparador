@@ -111,7 +111,7 @@
 <script>
 // ── ESTADO GLOBAL ────────────────────────────────────────
 let api = null;
-let globalState = null;
+let globalState = null;      // <── Guardamos el estado de navegación nativo
 let serverStr = 'my.geotab.com';
 let databaseStr = '';
 let csvTrips = [];          
@@ -138,7 +138,7 @@ geotab.addin.blunvtccomparador = function () {
   return {
     initialize: function (geotabApi, state, callback) {
       api = geotabApi; 
-      globalState = state;
+      globalState = state; // <── Capturamos el objeto state aquí
       api.getSession(function(session) {
         if(session) {
           serverStr = session.server || 'my.geotab.com';
@@ -150,7 +150,7 @@ geotab.addin.blunvtccomparador = function () {
       });
     },
     focus: function (geotabApi, state) {
-      globalState = state;
+      globalState = state; // <── Nos aseguramos de mantenerlo actualizado al enfocar
     },
     blur: function (geotabApi, state) {}
   };
@@ -247,7 +247,6 @@ function callApi(method, params) {
   return new Promise((res, rej) => api.call(method, params, res, rej));
 }
 
-// ── EXTRACCIÓN DE PARÁMETROS SEGUROS ─────────────────────
 function getSafeFilters() {
   let rawTol = document.getElementById('tolerance').value.replace(',', '.');
   let tol = parseInt(rawTol);
@@ -260,7 +259,6 @@ function getSafeFilters() {
   return { tolerance: tol, minDist: minD };
 }
 
-// ── COMPARACIÓN PRINCIPAL ────────────────────────────────
 async function runComparison() {
   if (!api) { alert('Conecta a Geotab para ejecutar la comparación.'); return; }
   if (csvTrips.length === 0) { alert('Primero carga el CSV.'); return; }
@@ -301,7 +299,6 @@ async function runComparison() {
 
     globalTargetDevices = targetDevices;
 
-    // Cálculo ultra-seguro de fechas (evita límites de Call Stack)
     let minTimestamp = Infinity;
     let maxTimestamp = -Infinity;
     csvTrips.forEach(t => {
@@ -357,7 +354,6 @@ async function runComparison() {
 
     updateLoading('Procesando cruce de rutas de la flota...');
 
-    // LECTURA DIRECTA DE KILÓMETROS (Sin divisiones)
     const geotabFiltered = allTrips.filter(t => (t.distance || 0) >= minDist);
     
     if (allTrips.length === 0 || geotabFiltered.length === 0) {
@@ -375,7 +371,7 @@ async function runComparison() {
       const plate = dev._matchedCsvPlate; 
       const gStart = new Date(t.start || t.startTime);
       const gStop  = new Date(t.stop  || t.stopTime);
-      const gDist  = t.distance || 0; // KILÓMETROS PUROS
+      const gDist  = t.distance || 0; 
 
       let geotabDriverName = "Sin conductor";
       if (t.driver && t.driver.id && t.driver.id !== "UnknownDriverId" && t.driver.id !== "NoDriverId") {
@@ -414,7 +410,6 @@ async function runComparison() {
   }
 }
 
-// ── RENDERIZADO ──────────────────────────────────────────
 function renderResults(tolerance, minDist, fromDate, toDate) {
   const filterPl = document.getElementById('filterVehicle').value;
 
@@ -558,25 +553,25 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
     } else {
       html.push(`<div class="trips-sub"><div class="trip-list">`);
       detailTrips.forEach(t => {
-        const mapUrl = buildMapUrl(t);
         const matchBadge = t.matched 
           ? `<span class="pill pill-ok">Contiene ${t.csvCount} viaje(s) APP</span>` 
           : `<span class="pill pill-danger">Sin registrar (Vacío)</span>`;
 
         const stopBadgeHtml = t.stopsCount > 0 ? `<br><div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>` : '';
 
+        // MODIFICADO: Ahora ejecuta navigateToTrip en vez de abrir un enlace plano target="_blank"
         html.push(`
-       <div class="trip-item">
-  <span class="trip-date">${fmtDateShort(t.gStart)}</span>
-  <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
-  <span class="trip-dist"><strong>${t.gDist} km</strong></span>
-  <span class="trip-route"><strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small></span>
-  <div class="trip-actions" style="text-align:right;">
-    ${matchBadge}
-    ${stopBadgeHtml}
-    <br><a class="trip-link" href="#" onclick="navigateToTrip(event, '${t.deviceId}', '${t.gStart.toISOString()}', '${t.gStop.toISOString()}')">Ver Mapa</a>
-  </div>
-</div>`);
+        <div class="trip-item">
+          <span class="trip-date">${fmtDateShort(t.gStart)}</span>
+          <span class="trip-time">${fmtTime(t.gStart)} – ${fmtTime(t.gStop)}</span>
+          <span class="trip-dist"><strong>${t.gDist} km</strong></span>
+          <span class="trip-route"><strong>${t.plateOrig}</strong><br><small>${t.geotabDriverName}</small></span>
+          <div class="trip-actions" style="text-align:right;">
+            ${matchBadge}
+            ${stopBadgeHtml}
+            <br><a class="trip-link" href="#" onclick="navigateToTrip(event, '${t.deviceId}', '${t.gStart.toISOString()}', '${t.gStop.toISOString()}')">Ver Mapa</a>
+          </div>
+        </div>`);
       });
       html.push(`</div></div>`);
     }
@@ -624,19 +619,20 @@ function buildMapUrl(t) {
   return `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:${t.deviceId}),fromDate:${from},toDate:${to}`;
 }
 
+// NUEVA FUNCIÓN: Controla la navegación fluida a través del Shell de MyGeotab
 function navigateToTrip(event, deviceId, fromDate, toDate) {
-  if (event) event.preventDefault(); // Evita el comportamiento por defecto del enlace '#'
+  if (event) event.preventDefault(); 
 
   if (globalState && typeof globalState.setState === 'function') {
-    // Inyecta el estado directamente en el cascarón de MyGeotab sin recargar la página
+    // Cambia instantáneamente la SPA de MyGeotab sin salir de la pestaña actual
     globalState.setState(`tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`);
   } else {
-    // Fallback de seguridad por si pruebas el HTML en local/standalone
+    // Fallback por si ejecutas el entorno en local o modo standalone
     const url = `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`;
     window.open(url, '_blank');
   }
 }
-  
+
 function exportExcel() {
   const unmatched = results.filter(r => !r.matched);
   const rows = [
