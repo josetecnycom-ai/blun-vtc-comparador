@@ -111,7 +111,6 @@
 <script>
 // ── ESTADO GLOBAL ────────────────────────────────────────
 let api = null;
-let globalState = null;      // <── Guardamos el estado de navegación nativo
 let serverStr = 'my.geotab.com';
 let databaseStr = '';
 let csvTrips = [];          
@@ -138,7 +137,6 @@ geotab.addin.blunvtccomparador = function () {
   return {
     initialize: function (geotabApi, state, callback) {
       api = geotabApi; 
-      globalState = state; // <── Capturamos el objeto state aquí
       api.getSession(function(session) {
         if(session) {
           serverStr = session.server || 'my.geotab.com';
@@ -149,9 +147,7 @@ geotab.addin.blunvtccomparador = function () {
         callback();      
       });
     },
-    focus: function (geotabApi, state) {
-      globalState = state; // <── Nos aseguramos de mantenerlo actualizado al enfocar
-    },
+    focus: function (geotabApi, state) {},
     blur: function (geotabApi, state) {}
   };
 };
@@ -160,6 +156,7 @@ function normPlate(p) {
   return String(p||'').replace(/[\s\-]/g,'').toUpperCase().trim();
 }
 
+// Control de arrastrar archivos
 function onDrag(e, over) {
   e.preventDefault();
   document.getElementById('dropZone').classList.toggle('drag', over);
@@ -264,7 +261,6 @@ async function runComparison() {
   if (csvTrips.length === 0) { alert('Primero carga el CSV.'); return; }
 
   const { tolerance, minDist } = getSafeFilters();
-
   showLoading('Obteniendo flota de Geotab…');
 
   try {
@@ -558,8 +554,11 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
           : `<span class="pill pill-danger">Sin registrar (Vacío)</span>`;
 
         const stopBadgeHtml = t.stopsCount > 0 ? `<br><div class="stop-badge">⚠️ ${t.stopsCount} parada(s) rápida(s)</div>` : '';
+        
+        // Calculamos la URL absoluta de este viaje concreto
+        const mapUrl = buildMapUrl(t);
 
-        // MODIFICADO: Ahora ejecuta navigateToTrip en vez de abrir un enlace plano target="_blank"
+        // MODIFICADO: Cambiado href al enlace real y aplicado target="_top" para navegación fluida
         html.push(`
         <div class="trip-item">
           <span class="trip-date">${fmtDateShort(t.gStart)}</span>
@@ -569,7 +568,7 @@ function renderResults(tolerance, minDist, fromDate, toDate) {
           <div class="trip-actions" style="text-align:right;">
             ${matchBadge}
             ${stopBadgeHtml}
-            <br><a class="trip-link" href="#" onclick="navigateToTrip(event, '${t.deviceId}', '${t.gStart.toISOString()}', '${t.gStop.toISOString()}')">Ver Mapa</a>
+            <br><a class="trip-link" href="${mapUrl}" target="_top">Ver Mapa</a>
           </div>
         </div>`);
       });
@@ -617,20 +616,6 @@ function buildMapUrl(t) {
   const from = t.gStart.toISOString();
   const to   = t.gStop.toISOString();
   return `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:${t.deviceId}),fromDate:${from},toDate:${to}`;
-}
-
-// NUEVA FUNCIÓN: Controla la navegación fluida a través del Shell de MyGeotab
-function navigateToTrip(event, deviceId, fromDate, toDate) {
-  if (event) event.preventDefault(); 
-
-  if (globalState && typeof globalState.setState === 'function') {
-    // Cambia instantáneamente la SPA de MyGeotab sin salir de la pestaña actual
-    globalState.setState(`tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`);
-  } else {
-    // Fallback por si ejecutas el entorno en local o modo standalone
-    const url = `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:${deviceId}),fromDate:${fromDate},toDate:${toDate}`;
-    window.open(url, '_blank');
-  }
 }
 
 function exportExcel() {
