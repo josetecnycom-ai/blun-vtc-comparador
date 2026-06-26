@@ -612,10 +612,13 @@ function resortBy(col) {
   applyFilters();
 }
 
+// ── FUNCIÓN CORREGIDA PARA EVITAR EL ERROR DE RISON ─────────────────────
 function buildMapUrl(t) {
   const from = t.gStart.toISOString();
   const to   = t.gStop.toISOString();
-  return `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:${t.deviceId}),fromDate:${from},toDate:${to}`;
+  
+  // Añadidas comillas simples alrededor de la ID del dispositivo y las fechas ISO
+  return `https://${serverStr}/${databaseStr}/#tripsHistory,device:(id:'${t.deviceId}'),fromDate:'${from}',toDate:'${to}'`;
 }
 
 function exportExcel() {
